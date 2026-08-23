@@ -57,7 +57,7 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         headers: {
-          'Access-Control-Allow-Origin': request.headers.get('Origin') || 'http://localhost:3000',
+          'Access-Control-Allow-Origin': request.headers.get('Origin') || '*',
           'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
           'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           'Access-Control-Max-Age': '86400',
@@ -305,7 +305,7 @@ export default {
     const newHeaders = new Headers(response.headers);
     newHeaders.set(
       'Access-Control-Allow-Origin',
-      request.headers.get('Origin') || 'http://localhost:3000'
+      request.headers.get('Origin') || '*'
     );
 
     return new Response(response.body, {
