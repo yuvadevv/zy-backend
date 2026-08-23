@@ -107,8 +107,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`\n🚀 BLINTZY Backend running on http://localhost:${PORT}`);
-  console.log(`🔗 Connected directly to Cloudflare D1 (${env.DB ? 'Active' : 'Offline'}) & R2 via .env credentials`);
-  console.log(`⚡ Zero Wrangler dependency\n`);
-});
+if (process.env.VERCEL !== '1') {
+  server.listen(PORT, () => {
+    console.log(`\n🚀 BLINTZY Backend running on http://localhost:${PORT}`);
+    console.log(`🔗 Connected directly to Cloudflare D1 (${env.DB ? 'Active' : 'Offline'}) & R2 via .env credentials`);
+    console.log(`⚡ Zero Wrangler dependency\n`);
+  });
+}
+
+export default server;
+
