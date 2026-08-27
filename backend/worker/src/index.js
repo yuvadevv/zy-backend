@@ -2,7 +2,7 @@ import { handleHealth } from './routes/health.js';
 import { handleGetMe, handlePutMe } from './routes/students.js';
 import { handleGetFilters, handleGetManuals, handleGetManualById, handleGetManualPreview } from './routes/manuals.js';
 import { handleTestPdf } from './routes/test-pdf.js';
-import { handleGetContent, handleGetPlatformStatus } from './routes/public.js';
+import { handleGetContent, handleGetPlatformStatus, handleGetAcademicOptions } from './routes/public.js';
 import { verifyAuth } from './middleware/auth.js';
 import { errorResponse } from './utils/response.js';
 import { handlePostDocument, handleGetDocument, handleDeleteDocument } from './routes/documents.js';
@@ -31,6 +31,7 @@ import { handleGetRoles, handleGetPermissions } from './routes/admin/roles.js';
 import { handleGetTeam, handlePostTeamMember } from './routes/admin/team.js';
 import { handleGetUsers, handlePatchUserStatus } from './routes/admin/users.js';
 import { handleGetBranches, handlePostBranch, handlePatchBranch, handleGetSubjects, handlePostSubject } from './routes/admin/academic.js';
+import { handleGenericGet, handleGenericPost, handleGenericPatch, handleGenericDelete } from './routes/admin/academic_generic.js';
 import { handleGetManuals as handleAdminGetManuals, handlePostManual, handlePatchManual, handleDeleteManual, handlePostManualPreview } from './routes/admin/manuals.js';
 import { handleGetSettings, handlePatchSettings } from './routes/admin/settings.js';
 import {
@@ -73,6 +74,8 @@ export default {
         response = await handleGetPlatformStatus(request, env);
       } else if (request.method === 'GET' && path === '/api/content') {
         response = await handleGetContent(request, env);
+      } else if (request.method === 'GET' && path === '/api/public/academic-options') {
+        response = await handleGetAcademicOptions(request, env);
       } else if (request.method === 'POST' && path === '/api/test-pdf') {
         return await handleTestPdf(request);
       } else if (request.method === 'GET' && path === '/api/manuals/filters') {
@@ -155,17 +158,28 @@ export default {
           } else if (request.method === 'PATCH' && path.match(/^\/api\/admin\/users\/[^/]+\/status$/)) {
             const id = path.split('/')[4];
             response = await check('users.edit') || await handlePatchUserStatus(request, env, context, id);
-          } else if (request.method === 'GET' && path === '/api/admin/academic/branches') {
-            response = await check('catalog.view') || await handleGetBranches(request, env, context);
-          } else if (request.method === 'POST' && path === '/api/admin/academic/branches') {
-            response = await check('catalog.edit') || await handlePostBranch(request, env, context);
-          } else if (request.method === 'PATCH' && path.match(/^\/api\/admin\/academic\/branches\/[^/]+$/)) {
-            const id = path.split('/')[5];
-            response = await check('catalog.edit') || await handlePatchBranch(request, env, context, id);
-          } else if (request.method === 'GET' && path === '/api/admin/academic/subjects') {
-            response = await check('catalog.view') || await handleGetSubjects(request, env, context);
-          } else if (request.method === 'POST' && path === '/api/admin/academic/subjects') {
-            response = await check('catalog.edit') || await handlePostSubject(request, env, context);
+          } else if (path.startsWith('/api/admin/academic/')) {
+            const parts = path.split('/');
+            const entity = parts[4]; // e.g., colleges, branches
+            const entityId = parts[5];
+
+            if (entity === 'subjects') {
+              if (request.method === 'GET') {
+                response = await check('catalog.view') || await handleGetSubjects(request, env, context);
+              } else if (request.method === 'POST') {
+                response = await check('catalog.edit') || await handlePostSubject(request, env, context);
+              }
+            } else {
+              if (request.method === 'GET') {
+                response = await check('catalog.view') || await handleGenericGet(request, env, context, entity);
+              } else if (request.method === 'POST') {
+                response = await check('catalog.edit') || await handleGenericPost(request, env, context, entity);
+              } else if (request.method === 'PATCH' && entityId) {
+                response = await check('catalog.edit') || await handleGenericPatch(request, env, context, entity, entityId);
+              } else if (request.method === 'DELETE' && entityId) {
+                response = await check('catalog.edit') || await handleGenericDelete(request, env, context, entity, entityId);
+              }
+            }
           } else if (request.method === 'GET' && path === '/api/admin/manuals') {
             response = await check('catalog.view') || await handleAdminGetManuals(request, env, context);
           } else if (request.method === 'POST' && path === '/api/admin/manuals') {

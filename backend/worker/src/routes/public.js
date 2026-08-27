@@ -85,3 +85,40 @@ export async function handleGetPlatformStatus(request, env) {
     return errorResponse('INTERNAL_ERROR', 'Failed to fetch platform status', 500);
   }
 }
+
+export async function handleGetAcademicOptions(request, env) {
+  try {
+    const fetchActive = async (table) => {
+      try {
+        const { results } = await env.DB.prepare(`SELECT * FROM ${table} WHERE status = 'active'`).all();
+        return results;
+      } catch (e) {
+        // Fallback for tables that don't have status yet or don't exist
+        return [];
+      }
+    };
+
+    const [colleges, branches, academicYears, semesters, sections, blocks, classrooms] = await Promise.all([
+      fetchActive('colleges'),
+      fetchActive('branches'),
+      fetchActive('academic_years'),
+      fetchActive('semesters'),
+      fetchActive('sections'),
+      fetchActive('blocks'),
+      fetchActive('classrooms')
+    ]);
+
+    return successResponse({
+      colleges,
+      branches,
+      academicYears,
+      semesters,
+      sections,
+      blocks,
+      classrooms
+    });
+  } catch (err) {
+    console.error('Error fetching academic options:', err);
+    return errorResponse('INTERNAL_ERROR', 'Failed to fetch academic options', 500);
+  }
+}
