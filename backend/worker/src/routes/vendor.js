@@ -14,6 +14,7 @@ export async function handleVendorGetOrders(request, env, context) {
       year: url.searchParams.get('year') || '',
       semester: url.searchParams.get('semester') || '',
       manual_id: url.searchParams.get('manual_id') || '',
+      order_type: url.searchParams.get('order_type') || 'all',
       payment_status: url.searchParams.get('payment_status') || '',
       min_price: url.searchParams.get('min_price') || '',
       max_price: url.searchParams.get('max_price') || '',
@@ -57,6 +58,25 @@ export async function handleVendorBulkPatchOrders(request, env, context) {
       return errorResponse('BAD_REQUEST', result.error, result.status);
     }
 
+    if (updates.status === 'delivered') {
+      try {
+        for (const orderId of orderIds) {
+          const internalIdResult = await env.DB.prepare('SELECT internal_id FROM orders WHERE public_id = ?').bind(orderId).first();
+          if (internalIdResult) {
+            const docs = await env.DB.prepare('SELECT id, r2_object_key FROM documents WHERE order_id = ? AND deleted_at IS NULL AND document_type IN (\'custom\', \'hall_ticket\')').bind(internalIdResult.internal_id).all();
+            if (docs && docs.results && docs.results.length > 0) {
+              for (const doc of docs.results) {
+                await env.DOCUMENTS.delete(doc.r2_object_key);
+                await env.DB.prepare('UPDATE documents SET deleted_at = ? WHERE id = ?').bind(Date.now(), doc.id).run();
+              }
+            }
+          }
+        }
+      } catch (cleanupErr) {
+        console.error('Failed to cleanup documents on bulk delivery', cleanupErr);
+      }
+    }
+
     return successResponse(result);
   } catch (err) {
     console.error('Vendor Bulk Patch Orders Error:', err);
@@ -77,6 +97,23 @@ export async function handleVendorPatchOrderStatus(request, env, context, id) {
     
     if (result.error) {
       return errorResponse('BAD_REQUEST', result.error, result.status);
+    }
+
+    if (status === 'delivered') {
+      try {
+        const internalIdResult = await env.DB.prepare('SELECT internal_id FROM orders WHERE public_id = ?').bind(id).first();
+        if (internalIdResult) {
+          const docs = await env.DB.prepare('SELECT id, r2_object_key FROM documents WHERE order_id = ? AND deleted_at IS NULL AND document_type IN (\'custom\', \'hall_ticket\')').bind(internalIdResult.internal_id).all();
+          if (docs && docs.results && docs.results.length > 0) {
+            for (const doc of docs.results) {
+              await env.DOCUMENTS.delete(doc.r2_object_key);
+              await env.DB.prepare('UPDATE documents SET deleted_at = ? WHERE id = ?').bind(Date.now(), doc.id).run();
+            }
+          }
+        }
+      } catch (cleanupErr) {
+        console.error('Failed to cleanup documents on delivery', cleanupErr);
+      }
     }
 
     return successResponse({ success: true, newStatus: status });
@@ -112,6 +149,7 @@ export async function handleVendorOrdersExport(request, env, context) {
       year: url.searchParams.get('year') || '',
       semester: url.searchParams.get('semester') || '',
       manual_id: url.searchParams.get('manual_id') || '',
+      order_type: url.searchParams.get('order_type') || 'all',
       sort: url.searchParams.get('sort') || 'newest',
       vendor_id: context.vendor.id
     };
@@ -204,5 +242,16 @@ export async function handleVendorGetDocumentAccess(request, env, context, docum
   } catch (err) {
     console.error('Vendor Get Document Access Error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to securely fetch document', 500);
+  }
+}
+
+export async function handleVendorPasswordChanged(request, env, context) {
+  try {
+    const vendorId = context.vendor.id;
+    await env.DB.prepare(`UPDATE vendors SET password_change_required = 0 WHERE id = ?`).bind(vendorId).run();
+    return successResponse({ success: true });
+  } catch (err) {
+    console.error('Vendor Password Changed Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to update password change status', 500);
   }
 }

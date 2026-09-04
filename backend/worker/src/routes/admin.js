@@ -1,8 +1,9 @@
 import { errorResponse, successResponse } from '../utils/response.js';
 import { 
   getPayments, getVendors, getAuditLogs, getAnalytics, 
-  getContent, createContent, updateContent, deleteContent, getExports, getPublicStatus
+  getContent, createContent, updateContent, deleteContent, getExports, getPublicStatus, getOrders
 } from '../services/adminService.js';
+import { createVendor, getVendor, updateVendor, updateVendorStatus, resetVendorPassword, getVendorStats } from '../services/vendorManagementService.js';
 
 export async function handleAdminGetPayments(request, env) {
   const url = new URL(request.url);
@@ -18,6 +19,70 @@ export async function handleAdminGetVendors(request, env) {
     search: url.searchParams.get('search'), status: url.searchParams.get('status'),
     page: parseInt(url.searchParams.get('page') || '1'), limit: parseInt(url.searchParams.get('limit') || '25')
   }));
+}
+
+export async function handleAdminPostVendor(request, env, context) {
+  const body = await request.json();
+  const res = await createVendor(env.DB, env, body, context.admin.id);
+  if (res.error) return errorResponse(res.error.includes('exists') ? 'CONFLICT' : 'BAD_REQUEST', res.error, res.status);
+  return successResponse(res);
+}
+
+export async function handleAdminGetVendor(request, env, id) {
+  const res = await getVendor(env.DB, id);
+  if (res.error) return errorResponse('NOT_FOUND', res.error, res.status);
+  return successResponse(res.vendor);
+}
+
+export async function handleAdminPatchVendor(request, env, context, id) {
+  const body = await request.json();
+  const res = await updateVendor(env.DB, id, body, context.admin.id);
+  if (res.error) return errorResponse(res.error.includes('exists') ? 'CONFLICT' : 'BAD_REQUEST', res.error, res.status);
+  return successResponse(res);
+}
+
+export async function handleAdminPatchVendorStatus(request, env, context, id) {
+  const body = await request.json();
+  const res = await updateVendorStatus(env.DB, id, body.status, context.admin.id);
+  if (res.error) return errorResponse('BAD_REQUEST', res.error, res.status);
+  return successResponse(res);
+}
+
+export async function handleAdminResetVendorPassword(request, env, context, id) {
+  const body = await request.json();
+  const res = await resetVendorPassword(env.DB, env, id, body.password, context.admin.id);
+  if (res.error) return errorResponse('SERVER_ERROR', res.error, res.status);
+  return successResponse(res);
+}
+
+export async function handleAdminGetVendorStats(request, env, id) {
+  const res = await getVendorStats(env.DB, id);
+  if (res.error) return errorResponse('NOT_FOUND', res.error, res.status);
+  return successResponse(res.stats);
+}
+
+export async function handleAdminGetVendorOrders(request, env, id) {
+  const url = new URL(request.url);
+  const res = await getOrders(env.DB, {
+    vendor_id: id,
+    status: url.searchParams.get('status') || 'all',
+    search: url.searchParams.get('search') || '',
+    page: parseInt(url.searchParams.get('page') || '1'), 
+    limit: parseInt(url.searchParams.get('limit') || '25')
+  });
+  return successResponse(res);
+}
+
+export async function handleAdminGetVendorActivity(request, env, id) {
+  const url = new URL(request.url);
+  const res = await getAuditLogs(env.DB, {
+    actor: id, // Assuming actor_id corresponds to the vendor if they performed actions, but wait, we want actions on the vendor?
+    // Actually, actions where entity_id = vendorId or actor = vendorId. Let's just fetch from DB directly for simplicity.
+  });
+  // Since we don't have a specific getVendorActivity, we will just implement it inline here.
+  const query = 'SELECT * FROM audit_logs WHERE entity_type = "vendor" AND entity_id = ? OR actor_id = ? ORDER BY created_at DESC LIMIT 25';
+  const logs = await env.DB.prepare(query).bind(id, id).all();
+  return successResponse({ logs: logs.results });
 }
 
 export async function handleAdminGetAuditLogs(request, env) {
@@ -110,7 +175,7 @@ export async function handlePublicGetStatus(request, env) {
   return successResponse(await getPublicStatus(env.DB));
 }
 
-import { getOrders, getOrderDetails, updateAdminOrderStatus, updateAdminOrderVendor, getDashboardStats, getDocumentAccessMetadata, updateAdminOrdersBulk, getCommonManualBatches, validateImportOrders } from '../services/adminService.js';
+import { getOrderDetails, updateAdminOrderStatus, updateAdminOrderVendor, getDashboardStats, getDocumentAccessMetadata, updateAdminOrdersBulk, getCommonManualBatches, validateImportOrders } from '../services/adminService.js';
 
 export async function handleAdminGetOrders(request, env) {
   try {
@@ -166,6 +231,25 @@ export async function handleAdminBulkPatchOrders(request, env, context) {
       return errorResponse('BAD_REQUEST', result.error, result.status);
     }
 
+    if (updates.status === 'delivered') {
+      try {
+        for (const orderId of orderIds) {
+          const internalIdResult = await env.DB.prepare('SELECT internal_id FROM orders WHERE public_id = ?').bind(orderId).first();
+          if (internalIdResult) {
+            const docs = await env.DB.prepare('SELECT id, r2_object_key FROM documents WHERE order_id = ? AND deleted_at IS NULL AND document_type IN (\'custom\', \'hall_ticket\')').bind(internalIdResult.internal_id).all();
+            if (docs && docs.results && docs.results.length > 0) {
+              for (const doc of docs.results) {
+                await env.DOCUMENTS.delete(doc.r2_object_key);
+                await env.DB.prepare('UPDATE documents SET deleted_at = ? WHERE id = ?').bind(Date.now(), doc.id).run();
+              }
+            }
+          }
+        }
+      } catch (cleanupErr) {
+        console.error('Failed to cleanup documents on bulk delivery', cleanupErr);
+      }
+    }
+
     return successResponse(result);
   } catch (err) {
     console.error('Admin Bulk Patch Orders Error:', err);
@@ -186,6 +270,23 @@ export async function handleAdminPatchOrderStatus(request, env, context, id) {
     
     if (result.error) {
       return errorResponse('BAD_REQUEST', result.error, result.status);
+    }
+
+    if (status === 'delivered') {
+      try {
+        const internalIdResult = await env.DB.prepare('SELECT internal_id FROM orders WHERE public_id = ?').bind(id).first();
+        if (internalIdResult) {
+          const docs = await env.DB.prepare('SELECT id, r2_object_key FROM documents WHERE order_id = ? AND deleted_at IS NULL AND document_type IN (\'custom\', \'hall_ticket\')').bind(internalIdResult.internal_id).all();
+          if (docs && docs.results && docs.results.length > 0) {
+            for (const doc of docs.results) {
+              await env.DOCUMENTS.delete(doc.r2_object_key);
+              await env.DB.prepare('UPDATE documents SET deleted_at = ? WHERE id = ?').bind(Date.now(), doc.id).run();
+            }
+          }
+        }
+      } catch (cleanupErr) {
+        console.error('Failed to cleanup documents on delivery', cleanupErr);
+      }
     }
 
     return successResponse({ success: true, newStatus: status });

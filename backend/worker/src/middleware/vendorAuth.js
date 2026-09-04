@@ -39,16 +39,16 @@ export async function verifyVendorAuth(request, env) {
     return { error: errorResponse('UNAUTHORIZED', 'Invalid token', 401) };
   }
 
-  const userId = payload.sub;
+  const supabaseUserId = payload.sub;
 
-  // Check if user exists in the vendors table
+  // Check if user exists in the vendors table using supabase_user_id
   let vendorRecord;
   try {
     vendorRecord = await env.DB.prepare(`
       SELECT id, status 
       FROM vendors 
-      WHERE id = ?
-    `).bind(userId).first();
+      WHERE supabase_user_id = ? OR email = ? -- fallback just in case email was used during early dev
+    `).bind(supabaseUserId, payload.email).first();
   } catch (dbErr) {
     console.error('vendorAuth: DB lookup failed:', dbErr?.message || dbErr);
     return { error: errorResponse('INTERNAL_ERROR', 'Database error during auth', 500) };
@@ -58,5 +58,5 @@ export async function verifyVendorAuth(request, env) {
     return { error: errorResponse('FORBIDDEN', 'Access denied. Active Vendor privileges required.', 403) };
   }
 
-  return { context: { vendor: { id: userId, email: payload.email } } };
+  return { context: { vendor: { id: vendorRecord.id, supabase_user_id: supabaseUserId, email: payload.email } } };
 }

@@ -50,6 +50,7 @@ CREATE TABLE manuals (
     pages INTEGER NOT NULL,
     base_price REAL NOT NULL,
     availability_status TEXT NOT NULL,
+    stock INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (subject_id) REFERENCES subjects(id)
 );
 CREATE INDEX idx_manuals_subject ON manuals(subject_id);

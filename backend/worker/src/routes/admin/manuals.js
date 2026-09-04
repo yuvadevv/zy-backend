@@ -35,6 +35,27 @@ export async function handleGetManuals(request, env, context) {
   }
 }
 
+export async function handleAdminGetManualById(request, env, context, id) {
+  try {
+    const query = `
+      SELECT m.*, s.name as subject_name, s.code as subject_code
+      FROM manuals m
+      LEFT JOIN subjects s ON m.subject_id = s.id
+      WHERE m.id = ?
+    `;
+    const manual = await env.DB.prepare(query).bind(id).first();
+    
+    if (!manual) {
+      return errorResponse('NOT_FOUND', 'Manual not found', 404);
+    }
+    
+    return successResponse({ manual }, 200);
+  } catch (err) {
+    console.error('Get manual by id error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to fetch manual details', 500);
+  }
+}
+
 export async function handlePostManual(request, env, context) {
   try {
     const hasAccess = await hasPermission(env.DB, context.admin.id, 'manuals.manage');
@@ -48,9 +69,20 @@ export async function handlePostManual(request, env, context) {
     const base_price = parseFloat(formData.get('base_price')) || 0.0;
     const availability_status = formData.get('availability_status') || 'available';
     const file = formData.get('file');
+    const stock = parseInt(formData.get('stock')) || 0;
 
-    if (!title || !subject_id || !pages || !base_price || !file) {
-      return errorResponse('BAD_REQUEST', 'Missing required fields', 400);
+    const vendor_id = formData.get('vendor_id') || null;
+    const price_override = formData.get('price_override') ? parseFloat(formData.get('price_override')) : null;
+    const delivery_override = formData.get('delivery_override') ? parseFloat(formData.get('delivery_override')) : null;
+    const print_type = formData.get('print_type') || 'Black & White';
+    const print_side = formData.get('print_side') || 'Single Side';
+    const binding_type = formData.get('binding_type') || 'Spiral';
+    const branch_id = formData.get('branch_id') || null;
+    const academic_year_id = formData.get('academic_year_id') || null;
+    const semester_id = formData.get('semester_id') || null;
+
+    if (!title || !subject_id || !pages || base_price === undefined || base_price === null || isNaN(base_price) || !file || isNaN(stock) || stock < 0) {
+      return errorResponse('BAD_REQUEST', 'Missing or invalid required fields', 400);
     }
 
     const id = crypto.randomUUID();
@@ -66,25 +98,18 @@ export async function handlePostManual(request, env, context) {
       }
     });
 
-    let previewObjectKey = null;
-    const previewFile = formData.get('previewFile');
-    if (previewFile && previewFile.size > 0 && previewFile.type === 'application/pdf') {
-      const previewId = crypto.randomUUID();
-      previewObjectKey = `manual-previews/${id}/${previewId}.pdf`;
-      await env.DOCUMENTS.put(previewObjectKey, previewFile.stream(), {
-        httpMetadata: { contentType: 'application/pdf' },
-        customMetadata: {
-          type: 'manual_preview',
-          title: `Preview: ${title}`,
-          uploadedBy: context.admin.id
-        }
-      });
-    }
-
     await env.DB.prepare(`
-      INSERT INTO manuals (id, subject_id, title, description, pages, base_price, availability_status, r2_object_key, preview_object_key)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(id, subject_id, title, description, pages, base_price, availability_status, objectKey, previewObjectKey).run();
+      INSERT INTO manuals (
+        id, subject_id, title, description, pages, base_price, availability_status, stock,
+        r2_object_key, preview_object_key, vendor_id, price_override, delivery_override, 
+        print_type, print_side, binding_type, branch_id, academic_year_id, semester_id
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      id, subject_id, title, description, pages, base_price, availability_status, stock,
+      objectKey, null, vendor_id, price_override, delivery_override, 
+      print_type, print_side, binding_type, branch_id, academic_year_id, semester_id
+    ).run();
 
     await env.DB.prepare(`
       INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, after_value, created_at)
@@ -104,7 +129,11 @@ export async function handlePatchManual(request, env, context, id) {
     if (!hasAccess) return errorResponse('FORBIDDEN', 'Insufficient permissions', 403);
 
     const body = await request.json();
-    const { title, description, pages, base_price, availability_status } = body;
+    const { 
+      title, description, pages, base_price, availability_status, stock,
+      vendor_id, price_override, delivery_override, print_type, print_side, binding_type,
+      branch_id, academic_year_id, semester_id, subject_id
+    } = body;
 
     const result = await env.DB.prepare(`
       UPDATE manuals
@@ -112,20 +141,37 @@ export async function handlePatchManual(request, env, context, id) {
           description = coalesce(?, description),
           pages = coalesce(?, pages),
           base_price = coalesce(?, base_price),
-          availability_status = coalesce(?, availability_status)
+          availability_status = coalesce(?, availability_status),
+          stock = coalesce(?, stock),
+          vendor_id = coalesce(?, vendor_id),
+          price_override = coalesce(?, price_override),
+          delivery_override = coalesce(?, delivery_override),
+          print_type = coalesce(?, print_type),
+          print_side = coalesce(?, print_side),
+          binding_type = coalesce(?, binding_type),
+          branch_id = coalesce(?, branch_id),
+          academic_year_id = coalesce(?, academic_year_id),
+          semester_id = coalesce(?, semester_id),
+          subject_id = coalesce(?, subject_id)
       WHERE id = ?
-    `).bind(title ?? null, description ?? null, pages ?? null, base_price ?? null, availability_status ?? null, id).run();
+    `).bind(
+      title ?? null, description ?? null, pages ?? null, base_price ?? null, availability_status ?? null, stock ?? null,
+      vendor_id ?? null, price_override ?? null, delivery_override ?? null, print_type ?? null, print_side ?? null, binding_type ?? null,
+      branch_id ?? null, academic_year_id ?? null, semester_id ?? null, subject_id ?? null, id
+    ).run();
 
     if (result.meta.changes === 0) {
       return errorResponse('NOT_FOUND', 'Manual not found', 404);
     }
+    
+    const updatedManual = await env.DB.prepare('SELECT * FROM manuals WHERE id = ?').bind(id).first();
 
     await env.DB.prepare(`
       INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, after_value, created_at)
       VALUES (lower(hex(randomblob(16))), ?, ?, 'UPDATE', 'manual', ?, ?, ?)
     `).bind(context.admin.id, context.admin.role, id, JSON.stringify(body), Date.now()).run();
 
-    return successResponse({ success: true });
+    return successResponse({ success: true, manual: updatedManual });
   } catch (err) {
     console.error('Update manual error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to update manual', 500);
@@ -163,49 +209,3 @@ export async function handleDeleteManual(request, env, context, id) {
   }
 }
 
-export async function handlePostManualPreview(request, env, context, id) {
-  try {
-    const hasAccess = await hasPermission(env.DB, context.admin.id, 'manuals.manage');
-    if (!hasAccess) return errorResponse('FORBIDDEN', 'Insufficient permissions', 403);
-
-    const manual = await env.DB.prepare(`SELECT * FROM manuals WHERE id = ?`).bind(id).first();
-    if (!manual) return errorResponse('NOT_FOUND', 'Manual not found', 404);
-
-    const formData = await request.formData();
-    const file = formData.get('file');
-
-    if (!file || file.size === 0) {
-      return errorResponse('BAD_REQUEST', 'Missing file', 400);
-    }
-    
-    if (file.type !== 'application/pdf') {
-      return errorResponse('BAD_REQUEST', 'Preview must be a PDF file', 400);
-    }
-
-    const previewId = crypto.randomUUID();
-    const previewObjectKey = `manual-previews/${id}/${previewId}.pdf`;
-
-    await env.DOCUMENTS.put(previewObjectKey, file.stream(), {
-      httpMetadata: { contentType: 'application/pdf' },
-      customMetadata: {
-        type: 'manual_preview',
-        title: `Preview: ${manual.title}`,
-        uploadedBy: context.admin.id
-      }
-    });
-
-    await env.DB.prepare(`
-      UPDATE manuals SET preview_object_key = ? WHERE id = ?
-    `).bind(previewObjectKey, id).run();
-
-    await env.DB.prepare(`
-      INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, after_value, created_at)
-      VALUES (lower(hex(randomblob(16))), ?, ?, 'UPDATE', 'manual', ?, '{"preview_updated": true}', ?)
-    `).bind(context.admin.id, context.admin.role, id, Date.now()).run();
-
-    return successResponse({ success: true, previewObjectKey });
-  } catch (err) {
-    console.error('Upload manual preview error:', err);
-    return errorResponse('SERVER_ERROR', 'Failed to upload preview', 500);
-  }
-}

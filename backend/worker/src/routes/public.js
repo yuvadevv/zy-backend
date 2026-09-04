@@ -34,7 +34,7 @@ export async function handleGetContent(request, env) {
         id: row.id,
         type: row.type,
         title: row.title,
-        message: meta.subtitle || meta.message || '',
+        message: meta.subtitle || meta.message || meta.description || '',
         cta_label: meta.cta || meta.cta_label || '',
         cta_url: meta.url || meta.cta_url || '',
         image_key: meta.image_key || meta.image_url || '',
@@ -120,5 +120,46 @@ export async function handleGetAcademicOptions(request, env) {
   } catch (err) {
     console.error('Error fetching academic options:', err);
     return errorResponse('INTERNAL_ERROR', 'Failed to fetch academic options', 500);
+  }
+}
+
+const DEFAULT_PRICING_SETTINGS = {
+  printRates: {
+    bw_single: 1.0,
+    bw_double: 1.5,
+    color_single: 5.0,
+    color_double: 8.0
+  },
+  bindingFees: {
+    none: 0,
+    spiral: 30.0,
+    soft_bound: 50.0,
+    hard_bound: 100.0
+  },
+  defaultDeliveryFee: 40.0
+};
+
+export async function handleGetPublicPricingSettings(request, env) {
+  try {
+    const { results } = await env.DB.prepare(`
+      SELECT setting_value
+      FROM platform_settings
+      WHERE setting_key = 'pricing_settings'
+    `).all();
+
+    let settings = DEFAULT_PRICING_SETTINGS;
+    if (results && results.length > 0) {
+      try {
+        const stored = JSON.parse(results[0].setting_value);
+        settings = { ...DEFAULT_PRICING_SETTINGS, ...stored };
+      } catch (e) {
+        console.error('Failed to parse pricing settings', e);
+      }
+    }
+
+    return successResponse({ settings });
+  } catch (err) {
+    console.error('Get public pricing settings error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to fetch pricing settings', 500);
   }
 }

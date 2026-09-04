@@ -58,7 +58,7 @@ export async function getOrders(db, params) {
   const { 
     status, search, page = 1, limit = 25, 
     branch, year, semester, manual_id, payment_status,
-    min_price, max_price, sort = 'newest', vendor_id 
+    min_price, max_price, sort = 'newest', vendor_id, order_type
   } = params;
 
   let query = `
@@ -159,6 +159,18 @@ export async function getOrders(db, params) {
   if (manual_id && manual_id !== 'all') {
     const mClause = ` AND EXISTS (SELECT 1 FROM order_items oi2 WHERE oi2.order_id = o.internal_id AND oi2.manual_id = ?)`;
     query += mClause; countQuery += ` AND oi_count.manual_id = ?`; qParams.push(manual_id);
+  }
+  if (order_type && order_type !== 'all') {
+    const otClause = ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.order_type = ?)`;
+    query += otClause; 
+    if (!(manual_id && manual_id !== 'all')) {
+        // Since countQuery already has WHERE 1=1 and other conditions might have been appended,
+        // we can just use EXISTS for count as well to keep it simple and avoid LEFT JOIN mess.
+        countQuery += ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.order_type = ?)`;
+    } else {
+        countQuery += ` AND oi_count.order_type = ?`;
+    }
+    qParams.push(order_type);
   }
 
   let orderBy = ` ORDER BY o.created_at DESC`;

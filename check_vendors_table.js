@@ -25,12 +25,15 @@ const db = createRemoteD1({
 });
 
 async function run() {
-  console.log("Testing subquery throw...");
-  try {
-    await db.prepare("SELECT json_extract('invalid', '$')").all();
-    console.log("Did not throw!");
-  } catch (error) {
-    console.error("Successfully threw error:", error);
+  const tables = await db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='vendors'").all();
+  if (tables.results.length > 0) {
+    console.log(tables.results[0].sql);
+    
+    // Also check if there's any data
+    const data = await db.prepare("SELECT * FROM vendors").all();
+    console.log(`Vendors count: ${data.results.length}`);
+  } else {
+    console.log("No vendors table found.");
   }
 }
 run();

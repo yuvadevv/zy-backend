@@ -25,12 +25,15 @@ const db = createRemoteD1({
 });
 
 async function run() {
-  console.log("Testing subquery throw...");
-  try {
-    await db.prepare("SELECT json_extract('invalid', '$')").all();
-    console.log("Did not throw!");
-  } catch (error) {
-    console.error("Successfully threw error:", error);
+  const result = await db.prepare("SELECT id, title, stock FROM manuals LIMIT 1").first();
+  console.log('Before update:', result);
+
+  if (result) {
+    const updateResult = await db.prepare("UPDATE manuals SET stock = ? WHERE id = ?").bind(100, result.id).run();
+    console.log('Update result:', updateResult);
+    
+    const after = await db.prepare("SELECT id, title, stock FROM manuals WHERE id = ?").bind(result.id).first();
+    console.log('After manual update:', after);
   }
 }
 run();

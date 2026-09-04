@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { Readable } from 'node:stream';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -109,8 +110,11 @@ const server = http.createServer(async (req, res) => {
       res.setHeader(key, val);
     });
 
-    const resArrayBuffer = await webResponse.arrayBuffer();
-    res.end(Buffer.from(resArrayBuffer));
+    if (webResponse.body) {
+      Readable.fromWeb(webResponse.body).pipe(res);
+    } else {
+      res.end();
+    }
   } catch (err) {
     console.error('Server error:', err);
     res.statusCode = 500;
@@ -124,6 +128,16 @@ if (process.env.VERCEL !== '1') {
     console.log(`\n🚀 BLINTZY Backend running on http://localhost:${PORT}`);
     console.log(`🔗 Connected directly to Cloudflare D1 (${env.DB ? 'Active' : 'Offline'}) & R2 via .env credentials`);
     console.log(`⚡ Zero Wrangler dependency\n`);
+
+    // Run temporary document cleanup every hour
+    setInterval(() => {
+      const scheduledCtx = {
+        waitUntil: (p) => Promise.resolve(p),
+        passThroughOnException: () => {}
+      };
+      worker.scheduled({ cron: '0 * * * *', scheduledTime: Date.now() }, env, scheduledCtx)
+        .catch(err => console.error('Scheduled cleanup failed:', err));
+    }, 60 * 60 * 1000);
   });
 }
 

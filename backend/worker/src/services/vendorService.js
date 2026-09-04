@@ -162,7 +162,7 @@ export async function getVendorDashboardStats(db, vendorId) {
   today.setHours(0, 0, 0, 0);
   const startOfDay = today.getTime();
 
-  const [receivedResult, printingResult, bindingResult, qualityCheckResult, packedResult, readyResult, outResult, deliveredResult, todayOrdersResult] = await Promise.all([
+  const [receivedResult, printingResult, bindingResult, qualityCheckResult, packedResult, readyResult, outResult, deliveredResult, todayOrdersResult, vendorResult] = await Promise.all([
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'received' AND vendor_id = ?`).bind(vendorId).first(),
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'printing' AND vendor_id = ?`).bind(vendorId).first(),
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'binding' AND vendor_id = ?`).bind(vendorId).first(),
@@ -171,7 +171,8 @@ export async function getVendorDashboardStats(db, vendorId) {
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'ready_for_pickup' AND vendor_id = ?`).bind(vendorId).first(),
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'out_for_delivery' AND vendor_id = ?`).bind(vendorId).first(),
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'delivered' AND vendor_id = ?`).bind(vendorId).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE created_at >= ? AND vendor_id = ?`).bind(startOfDay, vendorId).first()
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE created_at >= ? AND vendor_id = ?`).bind(startOfDay, vendorId).first(),
+    db.prepare(`SELECT password_change_required FROM vendors WHERE id = ?`).bind(vendorId).first()
   ]);
 
   return {
@@ -183,7 +184,8 @@ export async function getVendorDashboardStats(db, vendorId) {
     ready_for_pickup: readyResult.count,
     out_for_delivery: outResult.count,
     delivered: deliveredResult.count,
-    todayOrders: todayOrdersResult.count
+    todayOrders: todayOrdersResult.count,
+    password_change_required: vendorResult ? !!vendorResult.password_change_required : false
   };
 }
 

@@ -70,14 +70,25 @@ export function createRemoteR2(bucketName, {
         throw new Error(`R2_GET_ERROR (${res.status}): ${text}`);
       }
 
-      const arrayBuffer = await res.arrayBuffer();
-      return {
-        body: arrayBuffer,
-        arrayBuffer: () => Promise.resolve(arrayBuffer),
-        text: () => Promise.resolve(Buffer.from(arrayBuffer).toString('utf-8')),
-        httpMetadata: {
-          contentType: res.headers.get('content-type')
+      const rangeHeader = res.headers.get('content-range');
+      let rangeObj;
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes (\d+)-(\d+)\/(\d+|\*)/);
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = parseInt(match[2], 10);
+          rangeObj = { offset: start, length: end - start + 1 };
         }
+      }
+
+      return {
+        body: res.body,
+        httpMetadata: {
+          contentType: res.headers.get('content-type') || 'application/octet-stream'
+        },
+        range: rangeObj,
+        size: parseInt(res.headers.get('content-length') || '0', 10),
+        httpEtag: res.headers.get('etag')
       };
     },
 

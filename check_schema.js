@@ -25,12 +25,7 @@ const db = createRemoteD1({
 });
 
 async function run() {
-  console.log("Testing subquery throw...");
-  try {
-    await db.prepare("SELECT json_extract('invalid', '$')").all();
-    console.log("Did not throw!");
-  } catch (error) {
-    console.error("Successfully threw error:", error);
-  }
+  const result = await db.prepare("PRAGMA table_info(manuals);").all();
+  console.log(JSON.stringify(result, null, 2));
 }
 run();

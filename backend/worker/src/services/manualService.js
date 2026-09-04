@@ -31,6 +31,7 @@ export async function getManuals(db, params = {}) {
       m.description, 
       m.pages, 
       m.base_price, 
+      m.stock,
       m.availability_status as availability 
     FROM manuals m
     JOIN subjects s ON m.subject_id = s.id
@@ -83,6 +84,7 @@ export async function getManualById(db, id) {
       m.description, 
       m.pages, 
       m.base_price, 
+      m.stock,
       m.availability_status as availability 
     FROM manuals m
     JOIN subjects s ON m.subject_id = s.id

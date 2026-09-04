@@ -12,6 +12,7 @@ export function createRemoteD1({
   const endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
 
   async function executeQuery(sql, params = []) {
+    console.log(`[D1_QUERY] ${sql} | Params: ${JSON.stringify(params)}`);
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -78,9 +79,10 @@ export function createRemoteD1({
     },
 
     async batch(statements) {
-      const results = await Promise.all(
-        statements.map(s => executeQuery(s.queryStr, s.params))
-      );
+      const results = [];
+      for (const s of statements) {
+        results.push(await executeQuery(s.queryStr, s.params));
+      }
       return results.map(r => ({
         results: r?.results || [],
         success: r?.success ?? true,

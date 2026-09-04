@@ -167,3 +167,26 @@ export async function handlePostSubject(request, env, context) {
     return errorResponse('SERVER_ERROR', 'Failed to create subject', 500);
   }
 }
+
+export async function handleDeleteSubject(request, env, context, id) {
+  try {
+    const hasAccess = await hasPermission(env.DB, context.admin.id, 'academic.manage');
+    if (!hasAccess) return errorResponse('FORBIDDEN', 'Insufficient permissions', 403);
+
+    const now = Date.now();
+    await env.DB.prepare(`DELETE FROM subjects WHERE id = ?`).bind(id).run();
+    
+    await env.DB.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, after_value, created_at)
+      VALUES (lower(hex(randomblob(16))), ?, ?, 'DELETE', 'subject', ?, ?, ?)
+    `).bind(context.admin.id, context.admin.role, id, null, now).run();
+
+    return successResponse({ success: true });
+  } catch (err) {
+    console.error('Delete subject error:', err);
+    if (err.message?.includes('FOREIGN KEY constraint failed') || err.message?.includes('constraint failed')) {
+      return errorResponse('CONFLICT', 'Cannot delete this subject because it is used by existing manuals or records.', 409);
+    }
+    return errorResponse('SERVER_ERROR', 'Failed to delete subject', 500);
+  }
+}

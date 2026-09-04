@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRemoteD1 } from './backend/worker/src/adapters/remoteD1.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(__dirname, '.env');
@@ -17,7 +18,6 @@ for (const line of content.split('\n')) {
   }
 }
 
-import { createRemoteD1 } from './backend/worker/src/adapters/remoteD1.js';
 const db = createRemoteD1({
   accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
   databaseId: process.env.CLOUDFLARE_DATABASE_ID,
@@ -25,12 +25,22 @@ const db = createRemoteD1({
 });
 
 async function run() {
-  console.log("Testing subquery throw...");
-  try {
-    await db.prepare("SELECT json_extract('invalid', '$')").all();
-    console.log("Did not throw!");
-  } catch (error) {
-    console.error("Successfully threw error:", error);
+  const sql = fs.readFileSync(path.join(__dirname, 'database', 'migrations', 'migration_manual_cms_v1.sql'), 'utf8');
+  const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 0);
+  
+  for (const stmt of statements) {
+    console.log(`Executing: ${stmt.slice(0, 50)}...`);
+    try {
+      await db.prepare(stmt).run();
+      console.log('Success');
+    } catch (e) {
+      console.error('Error:', e);
+    }
   }
+  
+  // Verify
+  const tables = await db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='vendors'").all();
+  console.log(tables.results[0].sql);
 }
+
 run();

@@ -43,7 +43,7 @@ export async function handleGetManualById(request, env, id) {
   }
 }
 
-export async function handleGetManualPreview(request, env, context, id) {
+export async function handleGetManualFile(request, env, context, id) {
   try {
     const studentId = context.user.id;
     if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
@@ -52,24 +52,26 @@ export async function handleGetManualPreview(request, env, context, id) {
     if (!manual) return errorResponse('NOT_FOUND', 'Manual not found', 404);
 
     if (manual.availability_status !== 'available' && manual.availability_status !== 'in_stock') {
-      return errorResponse('FORBIDDEN', 'Manual preview unavailable', 403);
+      return errorResponse('FORBIDDEN', 'Manual file unavailable', 403);
     }
 
-    if (!manual.preview_object_key) {
-      return errorResponse('NOT_FOUND', 'Preview unavailable for this manual.', 404);
+    if (!manual.r2_object_key) {
+      return errorResponse('NOT_FOUND', 'File unavailable for this manual.', 404);
     }
 
     // Pass range if provided
     const range = request.headers.get('Range');
     const getOptions = range ? { range } : {};
     
-    const object = await env.DOCUMENTS.get(manual.preview_object_key, getOptions);
+    const object = await env.DOCUMENTS.get(manual.r2_object_key, getOptions);
     if (!object) {
-      return errorResponse('NOT_FOUND', 'Preview file not found in storage.', 404);
+      return errorResponse('NOT_FOUND', 'File not found in storage.', 404);
     }
 
     const headers = new Headers();
-    object.writeHttpMetadata(headers);
+    if (typeof object.writeHttpMetadata === 'function') {
+      object.writeHttpMetadata(headers);
+    }
     headers.set('Content-Type', 'application/pdf');
     headers.set('Content-Disposition', 'inline');
     headers.set('Cache-Control', 'private, no-store');
@@ -84,7 +86,7 @@ export async function handleGetManualPreview(request, env, context, id) {
       headers 
     });
   } catch (error) {
-    console.error('Error fetching manual preview:', error);
-    return errorResponse('SERVER_ERROR', 'Failed to retrieve manual preview', 500);
+    console.error('Error fetching manual file:', error);
+    return errorResponse('SERVER_ERROR', 'Failed to retrieve manual file', 500);
   }
 }

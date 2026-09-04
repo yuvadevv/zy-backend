@@ -9,7 +9,11 @@ export function jsonResponse(data, status = 200, headers = {}) {
 }
 
 export function successResponse(data, status = 200, headers = {}) {
-  return jsonResponse({ success: true, ...data }, status, headers);
+  return jsonResponse({
+    success: true,
+    data: data,
+    ...(typeof data === 'object' && data !== null ? data : {})
+  }, status, headers);
 }
 
 export function errorResponse(code, message, status = 400, headers = {}) {
