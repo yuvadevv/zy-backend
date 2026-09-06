@@ -47,10 +47,11 @@ export function calculateManualPrice(pages, printOptions, pricingSettings = null
   let unitPrice = printingCostPerUnit + bindingCostPerUnit;
   let isCustomPricing = false;
 
-  if (priceOverride !== undefined && priceOverride !== null) {
-    unitPrice = priceOverride;
-    isCustomPricing = true;
-  }
+  // Base manual fixed prices are removed, price is always based on printing + binding
+  // if (priceOverride !== undefined && priceOverride !== null) {
+  //   unitPrice = priceOverride;
+  //   isCustomPricing = true;
+  // }
 
   const printingCost = printingCostPerUnit * copies;
   const bindingCost = bindingCostPerUnit * copies;
@@ -69,7 +70,7 @@ export function calculateManualPrice(pages, printOptions, pricingSettings = null
   };
 }
 
-export function calculateOrderTotal(itemSubtotals, deliveryMethod, pricingSettings = null) {
+export function calculateOrderTotal(itemSubtotals, deliveryMethod, pricingSettings = null, couponDiscount = 0) {
   const settings = pricingSettings || DEFAULT_PRICING_SETTINGS;
   
   const subtotal = itemSubtotals.reduce((sum, val) => sum + val, 0);
@@ -78,12 +79,16 @@ export function calculateOrderTotal(itemSubtotals, deliveryMethod, pricingSettin
   
   const platformFee = settings.platformFeeEnabled ? settings.platformFee : 0;
   
-  const grandTotal = subtotal + deliveryFee + platformFee;
+  let grandTotal = subtotal + deliveryFee + platformFee - couponDiscount;
+  if (grandTotal < 0) {
+    grandTotal = 0;
+  }
   
   return {
     subtotal,
     deliveryFee,
     platformFee,
+    couponDiscount,
     grandTotal
   };
 }

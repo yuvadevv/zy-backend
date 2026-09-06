@@ -4,7 +4,7 @@ import { calculateManualPrice, calculateOrderTotal } from '../services/pricingSe
 export async function handleCalculatePricing(request, env, context) {
   try {
     const body = await request.json();
-    const { items, deliveryMethod } = body;
+    const { items, deliveryMethod, couponCode } = body;
 
     if (!items || !Array.isArray(items)) {
       return errorResponse('BAD_REQUEST', 'Items array is required', 400);
@@ -48,14 +48,35 @@ export async function handleCalculatePricing(request, env, context) {
       });
     }
 
-    const orderTotal = calculateOrderTotal(itemSubtotals, deliveryMethod || 'delivery', pricingSettings);
+    let couponDiscount = 0;
+    let couponError = null;
+    let appliedCoupon = null;
+
+    if (couponCode && typeof couponCode === 'string' && couponCode.trim().length > 0) {
+      const normalizedCode = couponCode.trim().toUpperCase();
+      const coupon = await env.DB.prepare(`SELECT * FROM coupons WHERE code = ?`).bind(normalizedCode).first();
+      
+      if (!coupon) {
+        couponError = 'Invalid coupon code';
+      } else if (coupon.is_active !== 1) {
+        couponError = 'Coupon is inactive';
+      } else {
+        couponDiscount = coupon.discount_amount;
+        appliedCoupon = normalizedCode;
+      }
+    }
+
+    const orderTotal = calculateOrderTotal(itemSubtotals, deliveryMethod || 'delivery', pricingSettings, couponDiscount);
 
     return successResponse({
       items: detailedItems,
-      summary: orderTotal
+      summary: orderTotal,
+      couponError,
+      appliedCoupon
     });
   } catch (err) {
     console.error('Calculate Pricing Error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to calculate pricing', 500);
   }
 }
+

@@ -88,7 +88,12 @@ export function createRemoteR2(bucketName, {
         },
         range: rangeObj,
         size: parseInt(res.headers.get('content-length') || '0', 10),
-        httpEtag: res.headers.get('etag')
+        httpEtag: res.headers.get('etag'),
+        writeHttpMetadata: function(headers) {
+          if (this.httpMetadata?.contentType) {
+            headers.set('Content-Type', this.httpMetadata.contentType);
+          }
+        }
       };
     },
 

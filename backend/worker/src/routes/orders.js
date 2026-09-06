@@ -27,7 +27,7 @@ export async function handlePostOrder(request, env, context) {
     if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
 
     const body = await request.json();
-    const { items, deliveryDetails } = body;
+    const { items, deliveryDetails, couponCode } = body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return errorResponse('BAD_REQUEST', 'Order must contain at least one item', 400);
@@ -125,10 +125,25 @@ export async function handlePostOrder(request, env, context) {
       });
     }
 
+    let couponDiscount = 0;
+    let appliedCoupon = null;
+
+    if (couponCode && typeof couponCode === 'string' && couponCode.trim().length > 0) {
+      const normalizedCode = couponCode.trim().toUpperCase();
+      const coupon = await env.DB.prepare(`SELECT * FROM coupons WHERE code = ?`).bind(normalizedCode).first();
+      
+      if (!coupon || coupon.is_active !== 1) {
+        return errorResponse('BAD_REQUEST', 'Invalid or inactive coupon code', 400);
+      } else {
+        couponDiscount = coupon.discount_amount;
+        appliedCoupon = normalizedCode;
+      }
+    }
+
     // 4. Final Calculations
     // Note: deliveryMethod could be 'delivery' or 'pickup'
     const deliveryMethod = 'delivery'; // assume delivery for now unless passed in
-    const orderTotal = calculateOrderTotal(itemSubtotals, deliveryMethod, pricingSettings);
+    const orderTotal = calculateOrderTotal(itemSubtotals, deliveryMethod, pricingSettings, couponDiscount);
     
     // 5. Generate ETA
     const now = new Date();
@@ -160,19 +175,24 @@ export async function handlePostOrder(request, env, context) {
     // Determine primary order_type based on first item
     const orderType = validatedItems[0].item_type;
 
+    let deliveryBuilding = deliveryDetails?.building;
+    let deliveryRoom = deliveryDetails?.roomNumber || deliveryDetails?.room;
+    if (deliveryBuilding === undefined) deliveryBuilding = null;
+    if (deliveryRoom === undefined) deliveryRoom = null;
+
     // Insert order
     stmts.push(env.DB.prepare(`
       INSERT INTO orders (
         internal_id, public_id, student_id, status, internal_status,
         order_type, delivery_type, delivery_building, delivery_room,
         platform_fee, gst, delivery_fee, discount, grand_total,
-        estimated_delivery, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        estimated_delivery, created_at, updated_at, coupon_code
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       internalOrderId, publicOrderId, studentId, 'received', 'processing',
-      orderType, 'classroom', deliveryDetails?.building || null, deliveryDetails?.roomNumber || null,
-      orderTotal.platformFee, 0, orderTotal.deliveryFee, 0, orderTotal.grandTotal,
-      etaMs, nowMs, nowMs
+      orderType, 'classroom', deliveryBuilding, deliveryRoom,
+      orderTotal.platformFee, 0, orderTotal.deliveryFee, orderTotal.couponDiscount, orderTotal.grandTotal,
+      etaMs, nowMs, nowMs, appliedCoupon
     ));
 
     // Insert items

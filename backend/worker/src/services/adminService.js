@@ -119,8 +119,16 @@ export async function getOrders(db, params) {
     query += vClause; countQuery += vClause; qParams.push(vendor_id);
   }
   if (status && status !== 'all') {
-    const statusClause = ` AND o.status = ?`;
-    query += statusClause; countQuery += statusClause; qParams.push(status);
+    if (status.includes(',')) {
+      const statuses = status.split(',').map(s => s.trim()).filter(Boolean);
+      const placeholders = statuses.map(() => '?').join(',');
+      const statusClause = ` AND o.status IN (${placeholders})`;
+      query += statusClause; countQuery += statusClause;
+      qParams.push(...statuses);
+    } else {
+      const statusClause = ` AND o.status = ?`;
+      query += statusClause; countQuery += statusClause; qParams.push(status);
+    }
   }
   if (search) {
     const searchClause = ` AND (o.public_id LIKE ? OR s.roll_number LIKE ? OR s.name LIKE ? OR s.email LIKE ? OR s.phone LIKE ?)`;
@@ -161,14 +169,14 @@ export async function getOrders(db, params) {
     query += mClause; countQuery += ` AND oi_count.manual_id = ?`; qParams.push(manual_id);
   }
   if (order_type && order_type !== 'all') {
-    const otClause = ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.order_type = ?)`;
+    const otClause = ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.item_type = ?)`;
     query += otClause; 
     if (!(manual_id && manual_id !== 'all')) {
         // Since countQuery already has WHERE 1=1 and other conditions might have been appended,
         // we can just use EXISTS for count as well to keep it simple and avoid LEFT JOIN mess.
-        countQuery += ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.order_type = ?)`;
+        countQuery += ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.item_type = ?)`;
     } else {
-        countQuery += ` AND oi_count.order_type = ?`;
+        countQuery += ` AND oi_count.item_type = ?`;
     }
     qParams.push(order_type);
   }
@@ -241,7 +249,7 @@ export async function getOrderDetails(db, publicOrderId, vendorId = null) {
   if (!orderRow) return null;
 
   const items = await db.prepare(`
-    SELECT oi.manual_id as manualId, COALESCE(m.title, 'Document') as title, oi.copies as quantity, 
+    SELECT oi.item_type, oi.manual_id as manualId, COALESCE(m.title, 'Document') as title, oi.copies as quantity, 
            oi.page_count as pages, oi.print_type as printType, oi.color_mode as colorMode, 
            oi.binding_type as binding, oi.base_price as unitPrice, oi.item_total as totalPrice,
            d.original_filename as document_filename, d.r2_object_key, d.id as document_uuid
@@ -254,11 +262,15 @@ export async function getOrderDetails(db, publicOrderId, vendorId = null) {
   return buildOrderDTO(orderRow, items.results);
 }
 
-export async function updateAdminOrderStatus(db, publicOrderId, newStatus, currentStatus, adminOrVendorId) {
+export async function updateAdminOrderStatus(db, publicOrderId, newStatus, currentStatus, adminOrVendorId, vendorIdScope = null) {
   // Concurrency check
   let query = `SELECT internal_id, status FROM orders WHERE public_id = ?`;
   const params = [publicOrderId];
-  // If vendor id is provided, we should probably scope it, but updateAdminOrdersBulk does it.
+  
+  if (vendorIdScope) {
+    query += ` AND vendor_id = ?`;
+    params.push(vendorIdScope);
+  }
   
   const order = await db.prepare(query).bind(...params).first();
   if (!order) {
@@ -270,18 +282,25 @@ export async function updateAdminOrderStatus(db, publicOrderId, newStatus, curre
   }
   
   // Using updateAdminOrdersBulk for individual updates to ensure shared state logic
-  return await updateAdminOrdersBulk(db, [publicOrderId], { status: newStatus }, adminOrVendorId);
+  return await updateAdminOrdersBulk(db, [publicOrderId], { status: newStatus }, adminOrVendorId, vendorIdScope);
 }
 
 export async function updateAdminOrdersBulk(db, publicOrderIds, updates, adminId, vendorIdScope = null) {
   if (!publicOrderIds || publicOrderIds.length === 0) return { error: 'No orders selected', status: 400 };
   if (publicOrderIds.length > 500) return { error: 'Too many orders. Max 500 per batch.', status: 400 };
 
-  const { status, estimatedDelivery, deliveryType, deliveryBuilding, deliveryRoom } = updates;
+  const { status, estimatedDelivery, deliveryType, deliveryBuilding, deliveryRoom, vendorId } = updates;
   const now = Date.now();
   
+  if (vendorId) {
+    const vendor = await db.prepare(`SELECT id, status FROM vendors WHERE id = ?`).bind(vendorId).first();
+    if (!vendor || vendor.status !== 'active') {
+      return { error: 'Vendor not found or not active', status: 400 };
+    }
+  }
+
   const placeholders = publicOrderIds.map(() => '?').join(',');
-  let selectQuery = `SELECT internal_id, public_id, status FROM orders WHERE public_id IN (${placeholders})`;
+  let selectQuery = `SELECT internal_id, public_id, status, vendor_id FROM orders WHERE public_id IN (${placeholders})`;
   const params = [...publicOrderIds];
   if (vendorIdScope) {
     selectQuery += ` AND vendor_id = ?`;
@@ -327,7 +346,7 @@ export async function updateAdminOrdersBulk(db, publicOrderIds, updates, adminId
       }
     }
 
-    if (estimatedDelivery !== undefined || deliveryType !== undefined || deliveryBuilding !== undefined || deliveryRoom !== undefined) {
+    if (estimatedDelivery !== undefined || deliveryType !== undefined || deliveryBuilding !== undefined || deliveryRoom !== undefined || vendorId !== undefined) {
       shouldUpdate = true;
     }
 
@@ -350,6 +369,9 @@ export async function updateAdminOrdersBulk(db, publicOrderIds, updates, adminId
       if (deliveryRoom !== undefined) {
         updateQuery += `, delivery_room = ?`; updateParams.push(deliveryRoom);
       }
+      if (vendorId !== undefined) {
+        updateQuery += `, vendor_id = ?`; updateParams.push(vendorId);
+      }
       
       updateQuery += ` WHERE internal_id = ? AND status = ?`;
       updateParams.push(order.internal_id, order.status);
@@ -360,6 +382,7 @@ export async function updateAdminOrdersBulk(db, publicOrderIds, updates, adminId
       if (status && isOverride) actionName = 'order.status_override';
       else if (status) actionName = 'order.bulk_status';
       if (estimatedDelivery !== undefined && !status) actionName = 'order.bulk_eta';
+      if (vendorId !== undefined && !status && estimatedDelivery === undefined) actionName = 'order.vendor_assigned';
       
       auditStmts.push(db.prepare(`
         INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, before_value, after_value, created_at)
@@ -436,7 +459,7 @@ export async function validateImportOrders(db, importRows, vendorIdScope = null)
   
   for (const row of importRows) {
     if (!row.orderId) continue;
-    let query = `SELECT internal_id, status, updated_at FROM orders WHERE public_id = ?`;
+    let query = `SELECT internal_id, status, updated_at, vendor_id FROM orders WHERE public_id = ?`;
     const params = [row.orderId];
     if (vendorIdScope) { query += ` AND vendor_id = ?`; params.push(vendorIdScope); }
     
@@ -477,6 +500,9 @@ export async function validateImportOrders(db, importRows, vendorIdScope = null)
     }
     if (row.deliveryType !== undefined) {
       resultRow.changes.push({ field: 'Delivery Type', new: row.deliveryType });
+    }
+    if (row.vendorId !== undefined && row.vendorId !== dbOrder.vendor_id) {
+      resultRow.changes.push({ field: 'vendor_id', old: dbOrder.vendor_id, new: row.vendorId });
     }
     
     if (resultRow.isValid && resultRow.changes.length > 0) {

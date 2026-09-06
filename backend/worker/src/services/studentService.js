@@ -4,12 +4,13 @@ export async function getStudentByUserId(db, userId) {
       SELECT s.id, s.name, s.roll_number, s.phone, s.email,
              s.college_id, s.branch_id, s.study_year_id as year, s.semester_id as semester, s.section,
              c.name as college_name, b.name as branch_name,
-             ay.label as year_label, sem.label as semester_label
+             ay.label as year_label, sem.label as semester_label, sec.name as section_name
       FROM students s
       LEFT JOIN colleges c ON s.college_id = c.id
       LEFT JOIN branches b ON s.branch_id = b.id
       LEFT JOIN academic_years ay ON s.study_year_id = ay.id
       LEFT JOIN semesters sem ON s.semester_id = sem.id
+      LEFT JOIN sections sec ON s.section = sec.id
       WHERE s.id = ?
     `).bind(userId);
     
@@ -17,9 +18,10 @@ export async function getStudentByUserId(db, userId) {
     return result;
   } catch (e) {
     const stmt = db.prepare(`
-      SELECT id, name, roll_number, phone, email, college_id, branch_id, study_year_id as year, semester_id as semester, section
-      FROM students
-      WHERE id = ?
+      SELECT s.id, s.name, s.roll_number, s.phone, s.email, s.college_id, s.branch_id, s.study_year_id as year, s.semester_id as semester, s.section, sec.name as section_name
+      FROM students s
+      LEFT JOIN sections sec ON s.section = sec.id
+      WHERE s.id = ?
     `).bind(userId);
     
     const result = await stmt.first();

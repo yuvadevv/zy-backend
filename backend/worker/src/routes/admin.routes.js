@@ -27,6 +27,8 @@ import { handleGenericGet, handleGenericPost, handleGenericPatch, handleGenericD
 import { handleGetManuals as handleAdminGetManuals, handleAdminGetManualById, handlePostManual, handlePatchManual, handleDeleteManual } from './admin/manuals.js';
 import { handleGetSettings, handlePatchSettings, handleGetPricingSettings, handlePatchPricingSettings } from './admin/settings.js';
 
+import { handleAdminGetCoupons, handleAdminPostCoupon, handleAdminPatchCoupon } from './admin/coupons.js';
+
 export const adminRouter = new Router();
 
 // Middleware: Authenticate Admin & inject context
@@ -55,7 +57,7 @@ adminRouter.post('/orders/import/commit', perm('orders.edit'), handleAdminOrders
 adminRouter.patch('/orders/bulk', perm('orders.edit'), handleAdminBulkPatchOrders);
 adminRouter.get('/orders/batches', perm('orders.view'), handleAdminGetCommonManualBatches);
 adminRouter.patch('/orders/:id/status', perm('orders.edit'), (req, env, ctx) => handleAdminPatchOrderStatus(req, env, ctx, ctx.params.id));
-adminRouter.patch('/orders/:id/vendor', perm('orders.assign'), (req, env, ctx) => handleAdminPatchOrderVendor(req, env, ctx.params.id));
+adminRouter.patch('/orders/:id/vendor', perm('orders.assign'), (req, env, ctx) => handleAdminPatchOrderVendor(req, env, ctx, ctx.params.id));
 adminRouter.get('/orders/:id', perm('orders.view'), (req, env, ctx) => handleAdminGetOrder(req, env, ctx.params.id));
 adminRouter.get('/orders', perm('orders.view'), handleAdminGetOrders);
 
@@ -94,6 +96,11 @@ adminRouter.patch('/manuals/:id', perm('catalog.edit'), (req, env, ctx) => handl
 adminRouter.delete('/manuals/:id', perm('catalog.edit'), (req, env, ctx) => handleDeleteManual(req, env, ctx, ctx.params.id));
 adminRouter.get('/manuals', perm('catalog.view'), handleAdminGetManuals);
 adminRouter.post('/manuals', perm('catalog.edit'), handlePostManual);
+
+// Coupons
+adminRouter.get('/coupons', perm('settings.view'), handleAdminGetCoupons);
+adminRouter.post('/coupons', perm('settings.edit'), handleAdminPostCoupon);
+adminRouter.patch('/coupons/:id', perm('settings.edit'), (req, env, ctx) => handleAdminPatchCoupon(req, env, ctx, ctx.params.id));
 
 // Settings & Pricing
 adminRouter.get('/settings/pricing', perm('settings.view'), handleGetPricingSettings);

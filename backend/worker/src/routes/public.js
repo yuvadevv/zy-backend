@@ -71,9 +71,14 @@ export async function handleGetPlatformStatus(request, env) {
       ? Boolean(settings.maintenance_mode?.enabled) 
       : Boolean(settings.maintenance_mode);
 
+    const isComingSoon = typeof settings.coming_soon_enabled === 'object'
+      ? Boolean(settings.coming_soon_enabled?.enabled)
+      : Boolean(settings.coming_soon_enabled);
+
     const publicStatus = {
       maintenance_mode: isMaintenance,
       maintenance_message: settings.global_banner?.text || 'Platform is under maintenance. Please check back later.',
+      coming_soon: isComingSoon,
       support_email: settings.support_email || 'support@blintzy.com',
       support_phone: settings.support_phone || null,
       support_whatsapp: settings.support_whatsapp || null

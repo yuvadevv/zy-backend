@@ -1,7 +1,9 @@
 import { errorResponse, successResponse } from '../utils/response.js';
 import { 
   getPayments, getVendors, getAuditLogs, getAnalytics, 
-  getContent, createContent, updateContent, deleteContent, getExports, getPublicStatus, getOrders
+  getContent, createContent, updateContent, deleteContent, getExports, getPublicStatus, getOrders,
+  updateAdminOrderStatus, updateAdminOrdersBulk, getDashboardStats, getOrderDetails,
+  updateAdminOrderVendor, getDocumentAccessMetadata, getCommonManualBatches, validateImportOrders
 } from '../services/adminService.js';
 import { createVendor, getVendor, updateVendor, updateVendorStatus, resetVendorPassword, getVendorStats } from '../services/vendorManagementService.js';
 
@@ -175,7 +177,7 @@ export async function handlePublicGetStatus(request, env) {
   return successResponse(await getPublicStatus(env.DB));
 }
 
-import { getOrderDetails, updateAdminOrderStatus, updateAdminOrderVendor, getDashboardStats, getDocumentAccessMetadata, updateAdminOrdersBulk, getCommonManualBatches, validateImportOrders } from '../services/adminService.js';
+
 
 export async function handleAdminGetOrders(request, env) {
   try {
@@ -311,23 +313,20 @@ export async function handleAdminPatchOrderVendor(request, env, context, id) {
     const body = await request.json();
     const { vendor_id } = body;
     
-    if (!vendor_id) {
-      return errorResponse('BAD_REQUEST', 'vendor_id is required', 400);
-    }
-
     const adminId = context.admin.id;
-    const result = await updateAdminOrderVendor(env.DB, id, vendor_id, adminId);
+    const result = await updateAdminOrdersBulk(env.DB, [id], { vendorId: vendor_id }, adminId);
     
     if (result.error) {
       return errorResponse('BAD_REQUEST', result.error, result.status);
     }
 
-    return successResponse({ success: true, newVendorId: vendor_id });
+    return successResponse({ success: true });
   } catch (err) {
     console.error('Admin Patch Order Vendor Error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to update order vendor', 500);
   }
 }
+
 
 export async function handleAdminGetDocumentAccess(request, env, documentId) {
   try {

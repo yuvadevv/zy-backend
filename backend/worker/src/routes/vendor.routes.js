@@ -11,7 +11,11 @@ import {
   handleVendorOrdersExport,
   handleVendorOrdersImportValidate,
   handleVendorOrdersImportCommit,
-  handleVendorPasswordChanged
+  handleVendorPasswordChanged,
+  handleVendorGetDocuments,
+  handleVendorGetActivity,
+  handleVendorGetProfile,
+  handleVendorPatchProfile
 } from './vendor.js';
 
 export const vendorRouter = new Router();
@@ -37,6 +41,10 @@ vendorRouter.get('/orders/:id', (req, env, ctx) => handleVendorGetOrder(req, env
 vendorRouter.patch('/orders/:id/status', (req, env, ctx) => handleVendorPatchOrderStatus(req, env, ctx, ctx.params.id));
 vendorRouter.get('/orders', handleVendorGetOrders);
 
-// Documents & Profile
+// Documents & Profile & Activity
+vendorRouter.get('/documents', handleVendorGetDocuments);
 vendorRouter.get('/documents/:id/access', (req, env, ctx) => handleVendorGetDocumentAccess(req, env, ctx, ctx.params.id));
+vendorRouter.get('/activity', handleVendorGetActivity);
+vendorRouter.get('/profile', handleVendorGetProfile);
+vendorRouter.patch('/profile', handleVendorPatchProfile);
 vendorRouter.post('/profile/password-changed', handleVendorPasswordChanged);
