@@ -29,19 +29,13 @@ const db = createRemoteD1({
 
 async function main() {
   try {
-    const info = await db.prepare("SELECT * FROM students LIMIT 1").all();
-    console.log("Students Schema/Data:", info);
+    const userId = "1EEAE608-FC19-4EFB-AE62-89A1BEF668DE".toLowerCase();
+    const info = await db.prepare("SELECT * FROM students WHERE LOWER(id) = ?").bind(userId).all();
+    console.log("Student in DB:", info);
     
-    // Also test what happens with the specific query
-    const userId = "some-id";
-    const stmt = db.prepare(`
-      SELECT s.id, s.name, s.roll_number, s.phone, s.email, s.college_id, s.branch_id, s.study_year_id as year, s.semester_id as semester, s.section, sec.name as section_name
-      FROM students s
-      LEFT JOIN sections sec ON s.section = sec.id
-      WHERE s.id = ?
-    `).bind(userId);
-    const res2 = await stmt.all();
-    console.log("Fallback query:", res2);
+    // check how many students there are total
+    const count = await db.prepare("SELECT COUNT(*) as count FROM students").first();
+    console.log("Total students in DB:", count);
   } catch (e) {
     console.error(e);
   }

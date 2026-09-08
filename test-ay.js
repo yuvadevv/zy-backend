@@ -29,19 +29,8 @@ const db = createRemoteD1({
 
 async function main() {
   try {
-    const info = await db.prepare("SELECT * FROM students LIMIT 1").all();
-    console.log("Students Schema/Data:", info);
-    
-    // Also test what happens with the specific query
-    const userId = "some-id";
-    const stmt = db.prepare(`
-      SELECT s.id, s.name, s.roll_number, s.phone, s.email, s.college_id, s.branch_id, s.study_year_id as year, s.semester_id as semester, s.section, sec.name as section_name
-      FROM students s
-      LEFT JOIN sections sec ON s.section = sec.id
-      WHERE s.id = ?
-    `).bind(userId);
-    const res2 = await stmt.all();
-    console.log("Fallback query:", res2);
+    const result = await db.prepare("SELECT * FROM academic_years LIMIT 1").all();
+    console.log("Academic Years Table:", result);
   } catch (e) {
     console.error(e);
   }

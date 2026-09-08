@@ -39,7 +39,7 @@ export async function verifyAuth(request, env) {
     return {
       context: {
         user: {
-          id: payload.sub,
+          id: payload.sub.toLowerCase(),
           email: payload.email
         }
       }

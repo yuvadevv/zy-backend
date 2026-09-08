@@ -28,22 +28,13 @@ const db = createRemoteD1({
 });
 
 async function main() {
-  try {
-    const info = await db.prepare("SELECT * FROM students LIMIT 1").all();
-    console.log("Students Schema/Data:", info);
-    
-    // Also test what happens with the specific query
-    const userId = "some-id";
-    const stmt = db.prepare(`
-      SELECT s.id, s.name, s.roll_number, s.phone, s.email, s.college_id, s.branch_id, s.study_year_id as year, s.semester_id as semester, s.section, sec.name as section_name
-      FROM students s
-      LEFT JOIN sections sec ON s.section = sec.id
-      WHERE s.id = ?
-    `).bind(userId);
-    const res2 = await stmt.all();
-    console.log("Fallback query:", res2);
-  } catch (e) {
-    console.error(e);
-  }
+  const userIdUpper = "1EEAE608-FC19-4EFB-AE62-89A1BEF668DE";
+  const stmt = db.prepare("SELECT id FROM students WHERE id = ?").bind(userIdUpper);
+  const result = await stmt.all();
+  console.log("With Uppercase:", result);
+  
+  const stmt2 = db.prepare("SELECT id FROM students WHERE id = ?").bind(userIdUpper.toLowerCase());
+  const result2 = await stmt2.all();
+  console.log("With Lowercase:", result2);
 }
 main();

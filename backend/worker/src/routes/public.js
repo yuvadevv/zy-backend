@@ -81,7 +81,8 @@ export async function handleGetPlatformStatus(request, env) {
       coming_soon: isComingSoon,
       support_email: settings.support_email || 'support@blintzy.com',
       support_phone: settings.support_phone || null,
-      support_whatsapp: settings.support_whatsapp || null
+      support_whatsapp: settings.support_whatsapp || null,
+      social_links: settings.social_links || { twitter: '', linkedin: '', instagram: '' }
     };
 
     return successResponse(publicStatus);
@@ -113,14 +114,16 @@ export async function handleGetAcademicOptions(request, env) {
       fetchActive('classrooms')
     ]);
 
+    const mapLabelToName = (arr) => arr.map(item => ({ ...item, name: item.name || item.label }));
+
     return successResponse({
-      colleges,
-      branches,
-      academicYears,
-      semesters,
-      sections,
-      blocks,
-      classrooms
+      colleges: mapLabelToName(colleges),
+      branches: mapLabelToName(branches),
+      academicYears: mapLabelToName(academicYears),
+      semesters: mapLabelToName(semesters),
+      sections: mapLabelToName(sections),
+      blocks: mapLabelToName(blocks),
+      classrooms: mapLabelToName(classrooms)
     });
   } catch (err) {
     console.error('Error fetching academic options:', err);

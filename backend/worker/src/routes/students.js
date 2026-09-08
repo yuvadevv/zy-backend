@@ -48,11 +48,10 @@ export async function handlePutMe(request, env, context) {
     return successResponse({ student }, 200);
     
   } catch (error) {
-    console.error('D1 Upsert error full message:', error.message);
-    console.error('Attempted to insert payload:', studentData);
-    if (error.message.includes('FOREIGN KEY constraint failed') || error.message.includes('D1_ERROR')) {
+    console.error('D1 Upsert error full message:', error.message || error);
+    if (error.message && (error.message.includes('FOREIGN KEY constraint failed') || error.message.includes('D1_ERROR'))) {
       return errorResponse('BAD_REQUEST', 'Invalid academic relationship or duplicate entry provided.', 400);
     }
-    return errorResponse('SERVER_ERROR', 'Failed to synchronize student profile', 500);
+    return errorResponse('SERVER_ERROR', error.message || 'Failed to synchronize student profile', 500);
   }
 }
