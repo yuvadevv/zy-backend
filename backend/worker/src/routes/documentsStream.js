@@ -20,21 +20,26 @@ export async function handleGetDocumentStream(request, env, context) {
 
     let isAuthorized = false;
 
-    if (user.role === 'admin') {
+    // Check if user is Admin
+    const isAdmin = await env.DB.prepare('SELECT 1 FROM admin_users WHERE id = ? AND status = ?').bind(user.id, 'active').first();
+    if (isAdmin) {
       isAuthorized = true;
-    } else if (user.role === 'vendor') {
-      // Vendor can access if order is assigned to them
-      if (doc.order_id) {
-        const order = await env.DB.prepare(`
-          SELECT * FROM vendor_orders WHERE order_id = ? AND vendor_id = ?
-        `).bind(doc.order_id, user.id).first();
-        if (order) isAuthorized = true;
-      }
-    } else {
-      // Student can access their own
-      if (doc.student_id === user.id) {
+    } 
+    // Check if user is Vendor
+    else if (doc.order_id) {
+      const isVendor = await env.DB.prepare(`
+        SELECT 1 FROM vendor_orders 
+        WHERE order_id = ? AND vendor_id = ?
+      `).bind(doc.order_id, user.id).first();
+      
+      if (isVendor) {
         isAuthorized = true;
       }
+    }
+
+    // Student can access their own
+    if (!isAuthorized && doc.student_id === user.id) {
+      isAuthorized = true;
     }
 
     if (!isAuthorized) {

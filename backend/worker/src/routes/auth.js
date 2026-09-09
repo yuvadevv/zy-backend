@@ -88,17 +88,19 @@ export async function handleSignup(request, env) {
     });
 
     if (!ok || !resData || resData.error) {
-      const msg = resData?.error_description || resData?.message || 'Failed to sign up';
+      console.error('Supabase signup raw error:', JSON.stringify(resData));
+      const msg = resData?.error_description || resData?.message || resData?.msg || 'Failed to sign up';
       return errorResponse('SIGNUP_FAILED', msg, status || 400);
     }
 
+    const hasSession = resData.session || resData.access_token;
     return successResponse({
       user: resData.user,
-      session: resData.session || (resData.access_token ? {
+      session: hasSession ? (resData.session || {
         access_token: resData.access_token,
         refresh_token: resData.refresh_token,
         user: resData.user
-      } : null)
+      }) : null
     });
   } catch (err) {
     console.error('Backend handleSignup error:', err);

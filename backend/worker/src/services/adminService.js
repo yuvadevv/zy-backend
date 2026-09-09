@@ -78,7 +78,9 @@ export async function getOrders(db, params) {
       (
         SELECT json_group_array(json_object(
           'manualId', oi.manual_id,
-          'title', COALESCE(m.title, 'Document'),
+          'document_id', oi.document_id,
+          'document_filename', COALESCE(d.original_filename, 'Document'),
+          'title', COALESCE(m.title, d.original_filename, 'Document'),
           'quantity', oi.copies,
           'pages', oi.page_count,
           'printType', oi.print_type,
@@ -89,6 +91,7 @@ export async function getOrders(db, params) {
         ))
         FROM order_items oi
         LEFT JOIN manuals m ON oi.manual_id = m.id
+        LEFT JOIN documents d ON oi.document_id = d.id
         WHERE oi.order_id = o.internal_id
       ) as items_json
     FROM orders o

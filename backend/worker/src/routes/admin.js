@@ -194,7 +194,8 @@ export async function handleAdminGetOrders(request, env) {
       payment_status: url.searchParams.get('payment_status') || '',
       min_price: url.searchParams.get('min_price') || '',
       max_price: url.searchParams.get('max_price') || '',
-      sort: url.searchParams.get('sort') || 'newest'
+      sort: url.searchParams.get('sort') || 'newest',
+      order_type: url.searchParams.get('order_type') || 'all'
     };
 
     const result = await getOrders(env.DB, params);
