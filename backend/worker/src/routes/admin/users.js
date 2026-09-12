@@ -1,5 +1,6 @@
 import { errorResponse, successResponse } from '../../utils/response.js';
 import { hasPermission } from './roles.js';
+import { getStudentFullDetails } from '../../services/adminService.js';
 
 export async function handleGetUsers(request, env, context) {
   try {
@@ -101,5 +102,50 @@ export async function handlePatchUserStatus(request, env, context, userId) {
   } catch (err) {
     console.error('Update user status error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to update user status', 500);
+  }
+}
+
+export async function handleGetUserById(request, env, context, userId) {
+  try {
+    const hasAccess = await hasPermission(env.DB, context.admin.id, 'users.view');
+    if (!hasAccess) return errorResponse('FORBIDDEN', 'Insufficient permissions', 403);
+
+    const query = `
+      SELECT s.id, s.name, s.roll_number, s.phone, s.email,
+             s.college_id, s.branch_id, s.study_year_id as year, s.semester_id as semester, s.section,
+             s.account_status, s.created_at,
+             c.name as college_name, b.name as branch_name,
+             ay.label as year_label, sem.label as semester_label, sec.name as section_name
+      FROM students s
+      LEFT JOIN colleges c ON s.college_id = c.id
+      LEFT JOIN branches b ON s.branch_id = b.id
+      LEFT JOIN academic_years ay ON s.study_year_id = ay.id
+      LEFT JOIN semesters sem ON s.semester_id = sem.id
+      LEFT JOIN sections sec ON s.section = sec.id
+      WHERE s.id = ?
+    `;
+
+    const user = await env.DB.prepare(query).bind(userId).first();
+    if (!user) return errorResponse('NOT_FOUND', 'User not found', 404);
+
+    return successResponse(user);
+  } catch (err) {
+    console.error('Get user by id error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to fetch user details', 500);
+  }
+}
+
+export async function handleGetUserDetails(request, env, context, userId) {
+  try {
+    const hasAccess = await hasPermission(env.DB, context.admin.id, 'users.view');
+    if (!hasAccess) return errorResponse('FORBIDDEN', 'Insufficient permissions', 403);
+
+    const details = await getStudentFullDetails(env.DB, userId);
+    if (!details) return errorResponse('NOT_FOUND', 'Student not found', 404);
+
+    return successResponse(details);
+  } catch (err) {
+    console.error('Get user details error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to fetch full student details', 500);
   }
 }

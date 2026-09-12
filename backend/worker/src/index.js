@@ -9,6 +9,8 @@ import { manualsRouter } from './routes/manuals.routes.js';
 import { paymentsRouter } from './routes/payments.routes.js';
 import { adminRouter } from './routes/admin.routes.js';
 import { vendorRouter } from './routes/vendor.routes.js';
+import { refundsRouter } from './routes/refunds.routes.js';
+import { notificationsRouter } from './routes/notifications.routes.js';
 import { errorResponse } from './utils/response.js';
 
 // Initialize Root Application Router
@@ -30,6 +32,8 @@ app.use('/api/manuals', manualsRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/vendor', vendorRouter);
+app.use('/api/refunds', refundsRouter);
+app.use('/api/notifications', notificationsRouter);
 
 let isInitialized = false;
 let initPromise = null;

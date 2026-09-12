@@ -21,7 +21,9 @@ import {
 } from './admin.js';
 import { handleGetRoles, handleGetPermissions } from './admin/roles.js';
 import { handleGetTeam, handlePostTeamMember } from './admin/team.js';
-import { handleGetUsers, handlePatchUserStatus } from './admin/users.js';
+import { 
+  handleGetUsers, handleGetUserById, handlePatchUserStatus, handleGetUserDetails
+} from './admin/users.js';
 import { handleGetBranches, handlePostBranch, handlePatchBranch, handleGetSubjects, handlePostSubject, handleDeleteSubject } from './admin/academic.js';
 import { handleGenericGet, handleGenericPost, handleGenericPatch, handleGenericDelete } from './admin/academic_generic.js';
 import { handleGetManuals as handleAdminGetManuals, handleAdminGetManualById, handlePostManual, handlePatchManual, handleDeleteManual } from './admin/manuals.js';
@@ -62,7 +64,7 @@ adminRouter.get('/orders/:id', perm('orders.view'), (req, env, ctx) => handleAdm
 adminRouter.get('/orders', perm('orders.view'), handleAdminGetOrders);
 
 // Documents
-adminRouter.get('/documents/:id/access', perm('orders.view'), (req, env, ctx) => handleAdminGetDocumentAccess(req, env, ctx.params.id));
+adminRouter.get('/documents/:id/access', perm('orders.view'), (req, env, ctx) => handleAdminGetDocumentAccess(req, env, ctx, ctx.params.id));
 
 // Roles & Team
 adminRouter.get('/roles', perm('users.view'), handleGetRoles);
@@ -72,6 +74,8 @@ adminRouter.post('/team', perm('users.edit'), handlePostTeamMember);
 
 // Users
 adminRouter.patch('/users/:id/status', perm('users.edit'), (req, env, ctx) => handlePatchUserStatus(req, env, ctx, ctx.params.id));
+adminRouter.get('/users/:id/details', perm('users.view'), (req, env, ctx) => handleGetUserDetails(req, env, ctx, ctx.params.id));
+adminRouter.get('/users/:id', perm('users.view'), (req, env, ctx) => handleGetUserById(req, env, ctx, ctx.params.id));
 adminRouter.get('/users', perm('users.view'), handleGetUsers);
 
 // Academic - Subjects & Branches
@@ -108,11 +112,16 @@ adminRouter.patch('/settings/pricing', perm('settings.edit'), handlePatchPricing
 adminRouter.get('/settings', perm('settings.view'), handleGetSettings);
 adminRouter.patch('/settings', perm('settings.edit'), handlePatchSettings);
 
-// Payment Gateway & Payments
+// Payment Gateway, Payments & Refunds
 adminRouter.get('/payment-gateway/status', perm('payments.view'), handleAdminGetPaymentGatewayStatus);
 adminRouter.patch('/payment-gateway', perm('payments.edit'), handleAdminPatchPaymentGateway);
 adminRouter.post('/payment-gateway/test', perm('payments.edit'), handleAdminTestPaymentGateway);
 adminRouter.get('/payments', perm('payments.view'), handleAdminGetPayments);
+
+import { handleAdminGetRefunds, handleAdminPostRefund, handleAdminGetStudentRefunds } from './admin.js';
+adminRouter.get('/refunds', perm('payments.view'), handleAdminGetRefunds);
+adminRouter.post('/refunds', perm('payments.edit'), handleAdminPostRefund);
+adminRouter.get('/students/:studentId/refunds', perm('users.view'), (req, env, ctx) => handleAdminGetStudentRefunds(req, env, ctx, ctx.params.studentId));
 
 // Vendors
 adminRouter.patch('/vendors/:id/status', perm('vendors.edit'), (req, env, ctx) => handleAdminPatchVendorStatus(req, env, ctx, ctx.params.id));

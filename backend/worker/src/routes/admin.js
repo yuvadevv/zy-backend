@@ -511,3 +511,115 @@ export async function handleAdminOrdersImportCommit(request, env, context) {
   }
 }
 
+export async function handleAdminGetRefunds(request, env) {
+  try {
+    const url = new URL(request.url);
+    const limit = parseInt(url.searchParams.get('limit') || '25', 10);
+    const offset = (parseInt(url.searchParams.get('page') || '1', 10) - 1) * limit;
+
+    const query = `
+      SELECT r.*, o.public_id as order_public_id, s.name as student_name, s.email as student_email
+      FROM refunds r
+      JOIN orders o ON r.order_id = o.internal_id
+      JOIN students s ON r.student_id = s.id
+      ORDER BY r.created_at DESC LIMIT ? OFFSET ?
+    `;
+    
+    const countQuery = `SELECT COUNT(*) as total FROM refunds`;
+    
+    const [results, totalRes] = await env.DB.batch([
+      env.DB.prepare(query).bind(limit, offset),
+      env.DB.prepare(countQuery)
+    ]);
+    
+    return successResponse({
+      refunds: results.results,
+      pagination: {
+        total: totalRes.results[0].total,
+        page: Math.floor(offset / limit) + 1,
+        limit
+      }
+    });
+  } catch (err) {
+    console.error('Admin Get Refunds Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to fetch refunds', 500);
+  }
+}
+
+export async function handleAdminGetStudentRefunds(request, env, context, studentId) {
+  try {
+    const query = `
+      SELECT r.*, o.public_id as order_public_id
+      FROM refunds r
+      JOIN orders o ON r.order_id = o.internal_id
+      WHERE r.student_id = ?
+      ORDER BY r.created_at DESC
+    `;
+    const results = await env.DB.prepare(query).bind(studentId).all();
+    return successResponse(results.results);
+  } catch (err) {
+    console.error('Admin Get Student Refunds Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to fetch student refunds', 500);
+  }
+}
+
+export async function handleAdminPostRefund(request, env, context) {
+  try {
+    const body = await request.json();
+    const { orderId, amount, reason, adminNote } = body;
+    
+    if (!orderId || !amount || amount <= 0 || !reason) {
+      return errorResponse('BAD_REQUEST', 'Missing or invalid refund parameters', 400);
+    }
+    
+    const order = await env.DB.prepare(`SELECT * FROM orders WHERE public_id = ?`).bind(orderId).first();
+    if (!order) return errorResponse('NOT_FOUND', 'Order not found', 404);
+    
+    const payment = await env.DB.prepare(`SELECT * FROM payments WHERE order_id = ? AND status = 'paid'`).bind(order.internal_id).first();
+    if (!payment) return errorResponse('BAD_REQUEST', 'No captured payment found for order', 400);
+    
+    const existingRefunds = await env.DB.prepare(`SELECT SUM(amount) as total_refunded FROM refunds WHERE payment_id = ? AND status != 'failed' AND status != 'cancelled'`).bind(payment.id).first();
+    const totalRefunded = existingRefunds ? (existingRefunds.total_refunded || 0) : 0;
+    
+    if (amount > (payment.amount - totalRefunded)) {
+      return errorResponse('BAD_REQUEST', 'Refund amount exceeds remaining refundable balance', 400);
+    }
+    
+    const internalRefundId = crypto.randomUUID();
+    const publicRefundId = `ref_${Date.now()}`;
+    
+    // Process manual refund directly
+    await env.DB.prepare(`
+      INSERT INTO refunds (
+        id, public_refund_id, order_id, payment_id, student_id, provider, provider_payment_id,
+        amount, currency, status, reason, admin_id, admin_note, initiated_at, processed_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'processed', ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      internalRefundId, publicRefundId, order.internal_id, payment.id, order.student_id, payment.provider, payment.provider_payment_id,
+      amount, payment.currency, reason, context.admin.id, adminNote || null, Date.now(), Date.now(), Date.now(), Date.now()
+    ).run();
+
+    // Audit log
+    await env.DB.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, after_value, created_at)
+      VALUES (?, ?, ?, 'refund.created_manual', 'refund', ?, ?, ?)
+    `).bind(crypto.randomUUID(), context.admin.id, context.role || 'ADMIN', internalRefundId, JSON.stringify({ amount, status: 'processed', type: 'manual' }), Date.now()).run();
+
+    // Notification for student
+    const notifyTitle = `Refund of ₹${amount} Processed`;
+    const notifyMsg = `A manual refund of ₹${amount} for order ${order.public_id} has been processed. Reason: ${reason}`;
+    
+    await env.DB.prepare(`
+      INSERT INTO notifications (id, student_id, type, title, message, related_order_id, related_refund_id, dedupe_key, created_at)
+      VALUES (?, ?, 'refund_processed', ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(), order.student_id, notifyTitle, notifyMsg, order.internal_id, internalRefundId, `refund_processed_${internalRefundId}`, Date.now()
+    ).run();
+    
+    return successResponse({ success: true, refundId: publicRefundId, status: 'processed' });
+  } catch (err) {
+    console.error('Admin Post Refund Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to process refund', 500);
+  }
+}
+

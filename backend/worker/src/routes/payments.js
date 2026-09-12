@@ -25,7 +25,7 @@ export async function handleCreatePayment(request, env, context) {
       return errorResponse('NOT_FOUND', 'Order not found', 404);
     }
 
-    if (order.grand_total <= 0) {
+    if (order.grand_total < 1) {
       return errorResponse('BAD_REQUEST', 'Invalid order total', 400);
     }
 
@@ -193,32 +193,106 @@ export async function handlePaymentWebhook(request, env) {
     }
 
     const event = JSON.parse(rawBody);
+    const eventType = event.event;
+    
+    // Hash payload for audit
+    const payloadHash = Array.from(
+      new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawBody)))
+    ).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    // Idempotency: skip if already processed
-    if (event.event === 'payment.captured' || event.event === 'order.paid') {
-      const paymentEntity = event.payload.payment.entity;
-      const orderId = paymentEntity.order_id; // Razorpay order id
+    // Safe event ID fallback
+    const providerEventId = request.headers.get('x-razorpay-event-id') 
+      || `rzp_evt_${payloadHash.substring(0, 16)}`;
 
-      const payment = await env.DB.prepare(`
-        SELECT * FROM payments WHERE provider_order_id = ?
-      `).bind(orderId).first();
+    // Check idempotency
+    const existingEvent = await env.DB.prepare(`
+      SELECT * FROM webhook_events WHERE provider = 'razorpay' AND provider_event_id = ?
+    `).bind(providerEventId).first();
 
-      if (payment && payment.status === 'pending') {
-        // Mark payment as paid
-        await env.DB.prepare(`
-          UPDATE payments SET status = 'paid', provider_payment_id = ?, provider_signature = ?, paid_at = ?, updated_at = ?
-          WHERE id = ?
-        `).bind(paymentEntity.id, null, Date.now(), Date.now(), payment.id).run();
-        
-        // Update order status if needed
-        const order = await env.DB.prepare(`SELECT * FROM orders WHERE internal_id = ?`).bind(payment.order_id).first();
-        if (order && (order.status === 'received' || order.status === 'pending')) {
-          await env.DB.prepare(`
-            UPDATE orders SET status = 'printing', updated_at = ? WHERE internal_id = ?
-          `).bind(Date.now(), order.internal_id).run();
-        }
-      }
+    if (existingEvent) {
+      return successResponse({ status: 'ok', message: 'Already processed' });
     }
+
+    // Insert into webhook_events as received
+    await env.DB.prepare(`
+      INSERT INTO webhook_events (
+        id, provider, provider_event_id, event_type, payload_hash, processing_status, received_at, created_at
+      ) VALUES (?, 'razorpay', ?, ?, ?, 'received', ?, ?)
+    `).bind(
+      crypto.randomUUID(), providerEventId, eventType, payloadHash, Date.now(), Date.now()
+    ).run();
+
+    let processingStatus = 'processed';
+    let errorMessage = null;
+
+    try {
+      if (eventType === 'payment.captured' || eventType === 'order.paid') {
+        const paymentEntity = event.payload.payment.entity;
+        const orderId = paymentEntity.order_id;
+        
+        const payment = await env.DB.prepare(`SELECT * FROM payments WHERE provider_order_id = ?`).bind(orderId).first();
+        if (payment && payment.status === 'pending') {
+          await env.DB.prepare(`
+            UPDATE payments SET status = 'paid', provider_payment_id = ?, paid_at = ?, updated_at = ?
+            WHERE id = ?
+          `).bind(paymentEntity.id, Date.now(), Date.now(), payment.id).run();
+          
+          const order = await env.DB.prepare(`SELECT * FROM orders WHERE internal_id = ?`).bind(payment.order_id).first();
+          if (order && (order.status === 'received' || order.status === 'pending')) {
+            await env.DB.prepare(`UPDATE orders SET status = 'printing', updated_at = ? WHERE internal_id = ?`).bind(Date.now(), order.internal_id).run();
+          }
+        }
+      } else if (eventType === 'payment.failed') {
+        const paymentEntity = event.payload.payment.entity;
+        const orderId = paymentEntity.order_id;
+        const payment = await env.DB.prepare(`SELECT * FROM payments WHERE provider_order_id = ?`).bind(orderId).first();
+        if (payment && payment.status === 'pending') {
+          await env.DB.prepare(`UPDATE payments SET status = 'failed', updated_at = ? WHERE id = ?`).bind(Date.now(), payment.id).run();
+        }
+      } else if (eventType === 'refund.created' || eventType === 'refund.processed' || eventType === 'refund.failed') {
+        const refundEntity = event.payload.refund.entity;
+        const refundId = refundEntity.id;
+        const paymentId = refundEntity.payment_id;
+        
+        let refund = await env.DB.prepare(`SELECT * FROM refunds WHERE provider_refund_id = ?`).bind(refundId).first();
+        
+        if (!refund) {
+          // Sometimes refund.processed arrives first, if we didn't initiate it, we just skip or we could reconcile.
+          // Since Admin initiates refunds, it should exist by provider_refund_id, or at least we skip.
+          processingStatus = 'ignored';
+          errorMessage = 'Refund record not found in system';
+        } else {
+          // Update status
+          if (eventType === 'refund.processed' && refund.status !== 'processed') {
+            await env.DB.prepare(`UPDATE refunds SET status = 'processed', processed_at = ?, updated_at = ? WHERE id = ?`).bind(Date.now(), Date.now(), refund.id).run();
+            // Create Notification
+            await env.DB.prepare(`
+              INSERT INTO notifications (id, student_id, type, title, message, related_order_id, related_refund_id, dedupe_key, created_at)
+              VALUES (?, ?, 'refund_processed', 'Refund Completed', 'Your refund for order has been completed successfully.', ?, ?, ?, ?)
+              ON CONFLICT(dedupe_key) DO NOTHING
+            `).bind(crypto.randomUUID(), refund.student_id, refund.order_id, refund.id, `refund_processed_${refund.id}`, Date.now()).run();
+          } else if (eventType === 'refund.failed' && refund.status !== 'processed') {
+            await env.DB.prepare(`UPDATE refunds SET status = 'failed', failed_at = ?, failure_reason = ?, updated_at = ? WHERE id = ?`).bind(Date.now(), 'Webhook reported failure', Date.now(), refund.id).run();
+            // Create Notification
+            await env.DB.prepare(`
+              INSERT INTO notifications (id, student_id, type, title, message, related_order_id, related_refund_id, dedupe_key, created_at)
+              VALUES (?, ?, 'refund_failed', 'Refund Failed', 'Your refund could not be processed.', ?, ?, ?, ?)
+              ON CONFLICT(dedupe_key) DO NOTHING
+            `).bind(crypto.randomUUID(), refund.student_id, refund.order_id, refund.id, `refund_failed_${refund.id}`, Date.now()).run();
+          }
+        }
+      } else {
+        processingStatus = 'ignored';
+      }
+    } catch (processErr) {
+      processingStatus = 'failed';
+      errorMessage = processErr.message;
+    }
+
+    // Update webhook event status
+    await env.DB.prepare(`
+      UPDATE webhook_events SET processing_status = ?, processed_at = ?, error_message = ? WHERE provider_event_id = ?
+    `).bind(processingStatus, Date.now(), errorMessage, providerEventId).run();
 
     return successResponse({ status: 'ok' });
   } catch (err) {

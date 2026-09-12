@@ -2,6 +2,20 @@ import { jwtVerify, createRemoteJWKSet } from 'jose';
 import { errorResponse } from '../utils/response.js';
 
 let jwksCache = null;
+const activeThrottle = new Map();
+
+function trackActivity(env, userId) {
+  const now = Math.floor(Date.now() / 1000);
+  const last = activeThrottle.get(userId) || 0;
+  if (now - last > 900) { // 15 minutes
+    activeThrottle.set(userId, now);
+    // Non-blocking update
+    env.DB.prepare('UPDATE students SET last_active_at = ? WHERE id = ?')
+      .bind(now, userId)
+      .run()
+      .catch(err => console.error('Activity track error:', err.message));
+  }
+}
 
 export async function verifyAuth(request, env) {
   const authHeader = request.headers.get('Authorization');
@@ -36,10 +50,13 @@ export async function verifyAuth(request, env) {
        return { error: errorResponse('UNAUTHORIZED', 'Invalid token payload', 401) };
     }
 
+    const userId = payload.sub.toLowerCase();
+    trackActivity(env, userId);
+
     return {
       context: {
         user: {
-          id: payload.sub.toLowerCase(),
+          id: userId,
           email: payload.email
         }
       }

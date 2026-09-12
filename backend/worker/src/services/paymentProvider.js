@@ -144,4 +144,35 @@ export class PaymentProvider {
     
     return hashHex === signature;
   }
+  
+  async refundPayment(paymentId, amount, receipt) {
+    const keyId = this.env.RAZORPAY_KEY_ID;
+    const keySecret = this.env.RAZORPAY_KEY_SECRET;
+    
+    if (!keyId || !keySecret) {
+      throw new Error("Razorpay credentials not configured");
+    }
+
+    const basicAuth = btoa(`${keyId}:${keySecret}`);
+    const res = await fetch(`https://api.razorpay.com/v1/payments/${paymentId}/refund`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${basicAuth}`
+      },
+      body: JSON.stringify({
+        amount: Math.round(amount * 100), // Razorpay expects paise
+        receipt: receipt
+      })
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error("Razorpay refund creation failed:", errorText);
+      throw new Error("Failed to process refund with provider");
+    }
+    
+    const data = await res.json();
+    return data;
+  }
 }
