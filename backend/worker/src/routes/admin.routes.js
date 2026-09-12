@@ -22,7 +22,7 @@ import {
 import { handleGetRoles, handleGetPermissions } from './admin/roles.js';
 import { handleGetTeam, handlePostTeamMember } from './admin/team.js';
 import { 
-  handleGetUsers, handleGetUserById, handlePatchUserStatus, handleGetUserDetails
+  handleGetUsers, handleGetUserById, handlePatchUserStatus, handleGetUserDetails, handleUpdateUserCredentials
 } from './admin/users.js';
 import { handleGetBranches, handlePostBranch, handlePatchBranch, handleGetSubjects, handlePostSubject, handleDeleteSubject } from './admin/academic.js';
 import { handleGenericGet, handleGenericPost, handleGenericPatch, handleGenericDelete } from './admin/academic_generic.js';
@@ -60,7 +60,7 @@ adminRouter.patch('/orders/bulk', perm('orders.edit'), handleAdminBulkPatchOrder
 adminRouter.get('/orders/batches', perm('orders.view'), handleAdminGetCommonManualBatches);
 adminRouter.patch('/orders/:id/status', perm('orders.edit'), (req, env, ctx) => handleAdminPatchOrderStatus(req, env, ctx, ctx.params.id));
 adminRouter.patch('/orders/:id/vendor', perm('orders.assign'), (req, env, ctx) => handleAdminPatchOrderVendor(req, env, ctx, ctx.params.id));
-adminRouter.get('/orders/:id', perm('orders.view'), (req, env, ctx) => handleAdminGetOrder(req, env, ctx.params.id));
+adminRouter.get('/orders/:id', perm('orders.view'), (req, env, ctx) => handleAdminGetOrder(req, env, ctx, ctx.params.id));
 adminRouter.get('/orders', perm('orders.view'), handleAdminGetOrders);
 
 // Documents
@@ -73,6 +73,7 @@ adminRouter.get('/team', perm('users.view'), handleGetTeam);
 adminRouter.post('/team', perm('users.edit'), handlePostTeamMember);
 
 // Users
+adminRouter.patch('/users/:id/credentials', perm('users.edit'), (req, env, ctx) => handleUpdateUserCredentials(req, env, ctx, ctx.params.id));
 adminRouter.patch('/users/:id/status', perm('users.edit'), (req, env, ctx) => handlePatchUserStatus(req, env, ctx, ctx.params.id));
 adminRouter.get('/users/:id/details', perm('users.view'), (req, env, ctx) => handleGetUserDetails(req, env, ctx, ctx.params.id));
 adminRouter.get('/users/:id', perm('users.view'), (req, env, ctx) => handleGetUserById(req, env, ctx, ctx.params.id));
