@@ -79,10 +79,24 @@ export async function handleGetPlatformStatus(request, env) {
       maintenance_mode: isMaintenance,
       maintenance_message: settings.global_banner?.text || 'Platform is under maintenance. Please check back later.',
       coming_soon: isComingSoon,
-      support_email: settings.support_email || 'support@blintzy.com',
+      support_email: settings.support_email || 'theblintzy@gmail.com',
       support_phone: settings.support_phone || null,
       support_whatsapp: settings.support_whatsapp || null,
-      social_links: settings.social_links || { twitter: '', linkedin: '', instagram: '' }
+      social_links: settings.social_links || { twitter: '', linkedin: '', instagram: '' },
+      app_version: settings.app_version || 'APP VERSION V1.0.0',
+      terms_pdf_url: settings.terms_pdf_url || null,
+      privacy_policy_pdf_url: settings.privacy_policy_pdf_url || null,
+      service_timings: {
+        printing_service_status: settings.printing_service_status || 'active',
+        printing_service_start_time: settings.printing_service_start_time || '09:00 AM',
+        printing_service_end_time: settings.printing_service_end_time || '06:00 PM',
+        pickup_service_status: settings.pickup_service_status || 'active',
+        pickup_service_start_time: settings.pickup_service_start_time || '09:00 AM',
+        pickup_service_end_time: settings.pickup_service_end_time || '06:00 PM',
+        delivery_service_status: settings.delivery_service_status || 'active',
+        delivery_service_start_time: settings.delivery_service_start_time || '09:00 AM',
+        delivery_service_end_time: settings.delivery_service_end_time || '06:00 PM'
+      }
     };
 
     return successResponse(publicStatus);
@@ -169,5 +183,48 @@ export async function handleGetPublicPricingSettings(request, env) {
   } catch (err) {
     console.error('Get public pricing settings error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to fetch pricing settings', 500);
+  }
+}
+
+export async function handleGetCodeTantraSettings(request, env) {
+  try {
+    const { results } = await env.DB.prepare(`
+      SELECT setting_value
+      FROM platform_settings
+      WHERE setting_key = 'code_tantra_settings'
+    `).all();
+    let settings = {};
+    if (results && results.length > 0) {
+      try { settings = JSON.parse(results[0].setting_value); } catch(e) {}
+    }
+    return successResponse({ settings });
+  } catch (err) {
+    return errorResponse('SERVER_ERROR', 'Failed to fetch settings', 500);
+  }
+}
+
+export async function handleGetFaqs(request, env) {
+  try {
+    const { results } = await env.DB.prepare('SELECT * FROM faqs WHERE status = ? ORDER BY display_order ASC, created_at DESC').bind('active').all();
+    return successResponse({ faqs: results });
+  } catch (err) {
+    console.error('Error fetching FAQs:', err);
+    return errorResponse('INTERNAL_ERROR', 'Failed to fetch FAQs', 500);
+  }
+}
+
+export async function handleGetBindingRules(request, env) {
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT id, min_pages, max_pages, price, is_active 
+       FROM binding_pricing_rules 
+       WHERE is_active = 1 
+       ORDER BY min_pages ASC`
+    ).all();
+
+    return successResponse({ rules: results });
+  } catch (err) {
+    console.error('Error fetching binding rules:', err);
+    return errorResponse('INTERNAL_ERROR', 'Failed to fetch binding rules', 500);
   }
 }

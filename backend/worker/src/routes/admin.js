@@ -206,7 +206,7 @@ export async function handleAdminGetOrders(request, env) {
   }
 }
 
-export async function handleAdminGetOrder(request, env, id) {
+export async function handleAdminGetOrder(request, env, context, id) {
   try {
     const details = await getOrderDetails(env.DB, id);
     if (!details) {
@@ -329,7 +329,7 @@ export async function handleAdminPatchOrderVendor(request, env, context, id) {
 }
 
 
-export async function handleAdminGetDocumentAccess(request, env, documentId) {
+export async function handleAdminGetDocumentAccess(request, env, context, documentId) {
   try {
     const metadata = await getDocumentAccessMetadata(env.DB, documentId);
     if (!metadata) {
@@ -623,3 +623,43 @@ export async function handleAdminPostRefund(request, env, context) {
   }
 }
 
+export async function handleAdminGetOversizedRequests(request, env) {
+  try {
+    const { results } = await env.DB.prepare(`
+      SELECT 
+        o.*,
+        s.name as student_name,
+        s.email as student_email,
+        s.phone as student_phone
+      FROM oversized_file_requests o
+      LEFT JOIN students s ON o.student_id = s.id
+      ORDER BY o.created_at DESC
+    `).all();
+    
+    return successResponse(results);
+  } catch (err) {
+    return errorResponse('SERVER_ERROR', err.message, 500);
+  }
+}
+
+export async function handleAdminPatchOversizedRequestStatus(request, env, context, id) {
+  try {
+    const body = await request.json();
+    const { status } = body;
+    
+    if (!['PENDING_REVIEW', 'CONTACTED', 'WAITING_FOR_STUDENT', 'APPROVED', 'REJECTED', 'CANCELLED', 'COMPLETED'].includes(status)) {
+      return errorResponse('BAD_REQUEST', 'Invalid status', 400);
+    }
+    
+    const nowMs = Date.now();
+    await env.DB.prepare(`
+      UPDATE oversized_file_requests 
+      SET status = ?, updated_at = ?
+      WHERE id = ?
+    `).bind(status, nowMs, id).run();
+    
+    return successResponse({ success: true });
+  } catch (err) {
+    return errorResponse('SERVER_ERROR', err.message, 500);
+  }
+}

@@ -12,7 +12,8 @@ export function createRemoteR2(bucketName, {
 
   return {
     async put(key, body, options = {}) {
-      const url = `${baseUrl}/${encodeURIComponent(key)}`;
+      const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+      const url = `${baseUrl}/${encodedKey}`;
       const headers = {
         'Authorization': `Bearer ${apiToken}`
       };
@@ -53,7 +54,8 @@ export function createRemoteR2(bucketName, {
     },
 
     async get(key, options = {}) {
-      const url = `${baseUrl}/${encodeURIComponent(key)}`;
+      const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+      const url = `${baseUrl}/${encodedKey}`;
       const headers = {
         'Authorization': `Bearer ${apiToken}`
       };
@@ -98,7 +100,8 @@ export function createRemoteR2(bucketName, {
     },
 
     async delete(key) {
-      const url = `${baseUrl}/${encodeURIComponent(key)}`;
+      const encodedKey = key.split('/').map(encodeURIComponent).join('/');
+      const url = `${baseUrl}/${encodedKey}`;
       const res = await fetch(url, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${apiToken}` }

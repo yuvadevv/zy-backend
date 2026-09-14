@@ -44,6 +44,10 @@ const env = {
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     apiToken: process.env.CLOUDFLARE_R2_API_TOKEN
   }),
+  CUSTOM_UPLOADS: createRemoteR2(process.env.R2_BUCKET_NAME_CUSTOM_UPLOADS || 'blintzy-documents-dev', {
+    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
+    apiToken: process.env.CLOUDFLARE_R2_API_TOKEN
+  }),
   PUBLIC_MEDIA: createRemoteR2(process.env.R2_PUBLIC_MEDIA_BUCKET || 'blintzy-public-media-preview', {
     accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
     apiToken: process.env.CLOUDFLARE_R2_API_TOKEN
@@ -62,7 +66,8 @@ const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin || '*';
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Cookie');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Max-Age', '86400');
 
   if (req.method === 'OPTIONS') {

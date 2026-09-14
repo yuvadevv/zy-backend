@@ -3,7 +3,7 @@ import { calculateManualPrice, calculateOrderTotal } from '../services/pricingSe
 import { calculateEstimatedDelivery } from '../services/deliveryService.js';
 
 // Generate BLZ-[YEAR]-[BRANCH_CODE]-[SEQ]
-async function generateOrderId(db, branchCode) {
+export async function generateOrderId(db, branchCode) {
   const yearStr = new Date().getFullYear().toString().slice(-2);
   const prefix = `BLZ-${yearStr}-${branchCode}`;
   
@@ -65,6 +65,10 @@ export async function handlePostOrder(request, env, context) {
     const validatedItems = [];
     const itemSubtotals = [];
 
+    // Fetch binding pricing rules
+    const rulesResult = await env.DB.prepare(`SELECT id, min_pages, max_pages, price, is_active FROM binding_pricing_rules`).all();
+    const bindingRules = rulesResult.results || [];
+
     // 3. Validate all items and calculate individual prices
     for (const item of items) {
       if (item.printOptions.copies < 1) {
@@ -98,26 +102,41 @@ export async function handlePostOrder(request, env, context) {
         if (doc.student_id !== studentId) return errorResponse('FORBIDDEN', `Document ${documentId} does not belong to you`, 403);
         
         pages = doc.page_count;
+      } else if (item.serviceType === 'code_tantra_files') {
+        documentId = item.documentId || item.referenceId;
+        const cf = await env.DB.prepare(`SELECT * FROM custom_files WHERE id = ? AND is_deleted = 0`).bind(documentId).first();
+        if (!cf) return errorResponse('NOT_FOUND', `Custom file ${documentId} not found`, 404);
+        
+        pages = item.pages || (item.meta && item.meta.totalPages) || 0;
+        pricingMode = 'settings';
       } else {
         return errorResponse('BAD_REQUEST', `Invalid serviceType ${item.serviceType}`, 400);
       }
 
-      const pricing = calculateManualPrice(pages, item.printOptions, pricingSettings, priceOverride);
+      const pricing = calculateManualPrice(pages, item.printOptions, pricingSettings, priceOverride, bindingRules);
+      
+      if (pricing.bindingError) {
+        return errorResponse('BAD_REQUEST', pricing.bindingError, 400);
+      }
+
       itemSubtotals.push(pricing.subtotal);
 
       validatedItems.push({
         item_type: item.serviceType,
         manual_id: manualId,
-        document_id: documentId,
+        document_id: item.serviceType === 'code_tantra_files' ? null : documentId,
+        custom_file_id: item.serviceType === 'code_tantra_files' ? documentId : null,
         copies: item.printOptions.copies,
         page_count: pages,
         paper_size: item.printOptions.paperSize || 'A4',
         print_type: item.printOptions.color ? 'color' : 'bw',
+        print_side: item.printOptions.singleSided ? 'single' : 'double',
         color_mode: item.printOptions.color ? 1 : 0,
         binding_type: item.printOptions.bindingType || 'none',
         pricing_mode: pricingMode,
         printing_rate: pricing.printingRate,
         binding_rate: pricing.bindingRate,
+        binding_rule_id: pricing.bindingRuleId,
         base_price: pricing.unitPrice,
         printing_cost: pricing.printingCost,
         binding_cost: pricing.bindingCost,
@@ -149,93 +168,38 @@ export async function handlePostOrder(request, env, context) {
     const now = new Date();
     const etaMs = calculateEstimatedDelivery(now, deliverySettings, deliveryCalendar, studentData);
 
-    // 6. Generate Order ID
-    const publicOrderId = await generateOrderId(env.DB, branchCode);
-    const internalOrderId = crypto.randomUUID();
+    // 6. Generate Payment Attempt ID
+    const paymentAttemptId = `pa_${crypto.randomUUID().replace(/-/g, '')}`;
     const nowMs = Date.now();
-
-    // 7. Insert into D1 using batch transaction
-    const stmts = [];
     
-    // Decrement stock for manuals atomically
-    for (const item of validatedItems) {
-      if (item.item_type === 'manual') {
-        stmts.push(env.DB.prepare(`
-          UPDATE manuals
-          SET stock = stock - ?
-          WHERE id = ?
-            AND CASE 
-              WHEN stock >= ? THEN 1 
-              ELSE json_extract('invalid_stock_decrement', '$') 
-            END
-        `).bind(item.copies, item.manual_id, item.copies));
-      }
-    }
+    const checkoutPayload = {
+      items: validatedItems,
+      deliveryDetails,
+      couponCode: appliedCoupon,
+      orderTotal,
+      etaMs,
+      branchCode,
+      studentId
+    };
 
-    // Determine primary order_type based on first item
-    const orderType = validatedItems[0].item_type;
-
-    let deliveryBuilding = deliveryDetails?.building;
-    let deliveryRoom = deliveryDetails?.roomNumber || deliveryDetails?.room;
-    if (deliveryBuilding === undefined) deliveryBuilding = null;
-    if (deliveryRoom === undefined) deliveryRoom = null;
-
-    // Insert order
-    stmts.push(env.DB.prepare(`
-      INSERT INTO orders (
-        internal_id, public_id, student_id, status, internal_status,
-        order_type, delivery_type, delivery_building, delivery_room,
-        platform_fee, gst, delivery_fee, discount, grand_total,
-        estimated_delivery, created_at, updated_at, coupon_code
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    // 7. Insert into payment_attempts
+    await env.DB.prepare(`
+      INSERT INTO payment_attempts (
+        id, user_id, checkout_payload, calculated_amount, currency, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'INR', 'created', ?, ?)
     `).bind(
-      internalOrderId, publicOrderId, studentId, 'received', 'processing',
-      orderType, 'classroom', deliveryBuilding, deliveryRoom,
-      orderTotal.platformFee, 0, orderTotal.deliveryFee, orderTotal.couponDiscount, orderTotal.grandTotal,
-      etaMs, nowMs, nowMs, appliedCoupon
-    ));
-
-    // Insert items
-    for (const item of validatedItems) {
-      const itemId = crypto.randomUUID();
-      stmts.push(env.DB.prepare(`
-        INSERT INTO order_items (
-          id, order_id, item_type, manual_id, document_id, copies, page_count,
-          paper_size, print_type, color_mode, binding_type, pricing_mode,
-          printing_rate, binding_rate, base_price, printing_cost, binding_cost,
-          item_total, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).bind(
-        itemId, internalOrderId, item.item_type, item.manual_id, item.document_id,
-        item.copies, item.page_count, item.paper_size, item.print_type, item.color_mode, 
-        item.binding_type, item.pricing_mode, item.printing_rate, item.binding_rate,
-        item.base_price, item.printing_cost, item.binding_cost, item.item_total, nowMs
-      ));
-      
-      // If it's a document, link the document to this order
-      if (item.document_id) {
-          stmts.push(env.DB.prepare(`UPDATE documents SET order_id = ? WHERE id = ?`).bind(internalOrderId, item.document_id));
-      }
-    }
-
-    try {
-      await env.DB.batch(stmts);
-    } catch (batchErr) {
-      if (batchErr.message && batchErr.message.includes('malformed JSON')) {
-        return errorResponse('CONFLICT', 'One or more items are out of stock or have insufficient quantity.', 409);
-      }
-      throw batchErr;
-    }
+      paymentAttemptId, studentId, JSON.stringify(checkoutPayload), orderTotal.grandTotal, nowMs, nowMs
+    ).run();
 
     return successResponse({
-      orderId: publicOrderId,
+      orderId: paymentAttemptId, // We return this so frontend can call /api/payments/create with it
       grandTotal: orderTotal.grandTotal,
-      status: 'received'
+      status: 'payment_pending'
     });
 
   } catch (err) {
-    console.error('Create Order Error:', err);
-    return errorResponse('SERVER_ERROR', 'Failed to create order', 500);
+    console.error('Create Payment Attempt Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to initialize checkout session', 500);
   }
 }
 
@@ -247,7 +211,7 @@ export async function handleGetOrders(request, env, context) {
     const orders = await env.DB.prepare(`
       SELECT public_id, status, grand_total, created_at, estimated_delivery, order_type
       FROM orders
-      WHERE student_id = ?
+      WHERE student_id = ? AND status != 'payment_pending'
       ORDER BY created_at DESC
     `).bind(studentId).all();
 
@@ -294,9 +258,16 @@ export async function handleGetOrder(request, env, context) {
       WHERE oi.order_id = ?
     `).bind(order.internal_id).all();
 
+    const customFiles = await env.DB.prepare(`
+      SELECT id, original_filename, stored_filename, file_size, upload_status, is_deleted
+      FROM custom_files
+      WHERE order_id = ?
+    `).bind(order.internal_id).all();
+
     return successResponse({
       order,
-      items: items.results
+      items: items.results,
+      customFiles: customFiles.results
     });
   } catch (err) {
     return errorResponse('SERVER_ERROR', 'Failed to fetch order', 500);

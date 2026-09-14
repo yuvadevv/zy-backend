@@ -25,27 +25,22 @@ const db = createRemoteD1({
 });
 
 async function run() {
-  const queries = [
-    "ALTER TABLE notifications ADD COLUMN category TEXT;",
-    "ALTER TABLE notifications ADD COLUMN icon TEXT;",
-    "ALTER TABLE notifications ADD COLUMN action_label TEXT;",
-    "ALTER TABLE notifications ADD COLUMN action_url TEXT;",
-    "ALTER TABLE notifications ADD COLUMN audience_type TEXT;",
-    "ALTER TABLE notifications ADD COLUMN audience_filter_snapshot TEXT;",
-    "ALTER TABLE notifications ADD COLUMN created_by TEXT;",
-    "ALTER TABLE notifications ADD COLUMN status TEXT;",
-    "ALTER TABLE notifications ADD COLUMN sent_at INTEGER;",
-    "ALTER TABLE notifications ADD COLUMN updated_at INTEGER;"
-  ];
-  for (const q of queries) {
+  const sql = fs.readFileSync(path.join(__dirname, 'database', 'migrations', '0007_custom_files.sql'), 'utf8');
+  const statements = sql.split(';').map(s => s.trim()).filter(s => s.length > 0);
+  
+  for (const stmt of statements) {
+    console.log(`Executing: ${stmt.slice(0, 50)}...`);
     try {
-      await db.prepare(q).run();
-      console.log(`Ran: ${q}`);
+      await db.prepare(stmt).run();
+      console.log('Success');
     } catch (e) {
-      console.error(`Failed: ${q}`, e.message);
+      console.error('Error:', e);
     }
   }
-  const res2 = await db.prepare("SELECT * FROM website_content WHERE content_type = 'statistics'").all();
-  console.log(res2.results);
+  
+  // Verify
+  const tables = await db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='custom_files'").all();
+  console.log(tables.results[0]?.sql || 'Table not found');
 }
+
 run();

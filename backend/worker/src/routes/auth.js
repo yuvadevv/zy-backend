@@ -81,15 +81,33 @@ export async function handleSignup(request, env) {
       return errorResponse('BAD_REQUEST', 'Email and password are required', 400);
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Check local D1 database for duplicates
+    const existingStudent = await env.DB.prepare('SELECT id FROM students WHERE LOWER(email) = ?').bind(normalizedEmail).first();
+    const existingAdmin = await env.DB.prepare('SELECT id FROM admin_users WHERE LOWER(email) = ?').bind(normalizedEmail).first();
+    const existingVendor = await env.DB.prepare('SELECT id FROM vendors WHERE LOWER(email) = ?').bind(normalizedEmail).first();
+    
+    if (existingStudent || existingAdmin || existingVendor) {
+      return errorResponse('CONFLICT', 'This email is already registered. Please log in or use "Forgot Password" if you cannot access your account.', 409);
+    }
+
     const { ok, status, data: resData } = await callSupabaseAuth(env, '/auth/v1/signup', {
-      email,
+      email: normalizedEmail,
       password,
       data: data || {}
     });
 
     if (!ok || !resData || resData.error) {
       console.error('Supabase signup raw error:', JSON.stringify(resData));
-      const msg = resData?.error_description || resData?.message || resData?.msg || 'Failed to sign up';
+      let msg = resData?.error_description || resData?.message || resData?.msg || 'Failed to sign up';
+      
+      const lowerMsg = msg.toLowerCase();
+      if (lowerMsg.includes('already registered') || lowerMsg.includes('user_already_exists') || lowerMsg.includes('already exists')) {
+        msg = 'This email is already registered. Please log in or use "Forgot Password" if you cannot access your account.';
+        return errorResponse('CONFLICT', msg, 409);
+      }
+
       return errorResponse('SIGNUP_FAILED', msg, status || 400);
     }
 
@@ -126,7 +144,7 @@ export async function handleOAuthGoogle(request, env) {
   const next = searchParams.get('next') || '/admin';
 
   const fullRedirect = `${redirectTo}${redirectTo.includes('?') ? '&' : '?'}next=${encodeURIComponent(next)}`;
-  const authUrl = `${env.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(fullRedirect)}`;
+  const authUrl = `${env.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(fullRedirect)}&response_type=token`;
 
   return new Response(null, {
     status: 302,
@@ -198,3 +216,81 @@ export async function handleOAuthExchange(request, env) {
   }
 }
 
+export async function handleResetPassword(request, env) {
+  try {
+    const body = await request.json();
+    const email = body.email?.trim().toLowerCase();
+    if (!email) {
+      return errorResponse('BAD_REQUEST', 'Email is required', 400);
+    }
+
+    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+    const now = Date.now();
+    const cooldownPeriod = 60000; // 60 seconds
+
+    // Rate limit check using audit_logs table
+    const recentRequest = await env.DB.prepare(`
+      SELECT created_at FROM audit_logs 
+      WHERE action = 'password_reset_request' 
+      AND (actor_id = ? OR after_value = ?)
+      AND created_at > ?
+      ORDER BY created_at DESC LIMIT 1
+    `).bind(email, ip, now - cooldownPeriod).first();
+
+    if (recentRequest) {
+      return errorResponse('TOO_MANY_REQUESTS', 'Please wait 60 seconds before requesting another reset link.', 429);
+    }
+
+    // Log the request
+    await env.DB.prepare(`
+      INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, before_value, after_value, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(), email, 'system', 'password_reset_request', 'auth', 'recovery', null, ip, now
+    ).run();
+
+    // Trigger Supabase recovery
+    await callSupabaseAuth(env, '/auth/v1/recover', { email });
+    
+    // Always return generic success
+    return successResponse({ 
+      message: 'If an account exists with this email address, a password-reset link has been sent. Please check your inbox and spam folder.'
+    });
+  } catch (err) {
+    console.error('Backend handleResetPassword error:', err);
+    return errorResponse('SERVER_ERROR', 'Internal error while processing reset request', 500);
+  }
+}
+
+export async function handleUpdatePassword(request, env) {
+  try {
+    const body = await request.json();
+    const { password, access_token } = body;
+
+    if (!password || !access_token) {
+      return errorResponse('BAD_REQUEST', 'Password and access token are required', 400);
+    }
+
+    const url = `${env.SUPABASE_URL}/auth/v1/user`;
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'apikey': env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${access_token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ password })
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || !data || data.error) {
+      return errorResponse('UPDATE_FAILED', 'This password-reset link is invalid or has expired. Please request a new link.', response.status || 400);
+    }
+
+    return successResponse({ message: 'Your password has been updated successfully. You can now log in with your new password.' });
+  } catch (err) {
+    console.error('Backend handleUpdatePassword error:', err);
+    return errorResponse('SERVER_ERROR', 'Internal error while updating password', 500);
+  }
+}

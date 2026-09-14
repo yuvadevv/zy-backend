@@ -81,34 +81,42 @@ export async function handlePostManual(request, env, context) {
     const academic_year_id = formData.get('academic_year_id') || null;
     const semester_id = formData.get('semester_id') || null;
 
-    if (!title || !subject_id || !pages || base_price === undefined || base_price === null || isNaN(base_price) || !file || isNaN(stock) || stock < 0) {
+    const pdf_source = formData.get('pdf_source') || 'r2';
+    const public_url = formData.get('public_url') || null;
+    const pricing_mode = formData.get('pricing_mode') || 'settings';
+
+    if (!title || !subject_id || !pages || base_price === undefined || base_price === null || isNaN(base_price) || (pdf_source === 'r2' && !file) || isNaN(stock) || stock < 0) {
       return errorResponse('BAD_REQUEST', 'Missing or invalid required fields', 400);
     }
 
     const id = crypto.randomUUID();
     const objectKey = `manuals/${id}.pdf`;
 
-    // Upload to R2
-    await env.DOCUMENTS.put(objectKey, file.stream(), {
-      httpMetadata: { contentType: 'application/pdf' },
-      customMetadata: {
-        type: 'manual',
-        title,
-        uploadedBy: context.admin.id
-      }
-    });
+    // Upload to R2 only if pdf_source is r2
+    if (pdf_source === 'r2' && file) {
+      await env.DOCUMENTS.put(objectKey, file.stream(), {
+        httpMetadata: { contentType: 'application/pdf' },
+        customMetadata: {
+          type: 'manual',
+          title,
+          uploadedBy: context.admin.id
+        }
+      });
+    }
 
     await env.DB.prepare(`
       INSERT INTO manuals (
         id, subject_id, title, description, pages, base_price, availability_status, stock,
         r2_object_key, preview_object_key, vendor_id, price_override, delivery_override, 
-        print_type, print_side, binding_type, branch_id, academic_year_id, semester_id
+        print_type, print_side, binding_type, branch_id, academic_year_id, semester_id,
+        pdf_source, public_url, pricing_mode
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       id, subject_id, title, description, pages, base_price, availability_status, stock,
-      objectKey, null, vendor_id, price_override, delivery_override, 
-      print_type, print_side, binding_type, branch_id, academic_year_id, semester_id
+      pdf_source === 'r2' ? objectKey : null, null, vendor_id, price_override, delivery_override, 
+      print_type, print_side, binding_type, branch_id, academic_year_id, semester_id,
+      pdf_source, public_url, pricing_mode
     ).run();
 
     await env.DB.prepare(`
@@ -132,7 +140,8 @@ export async function handlePatchManual(request, env, context, id) {
     const { 
       title, description, pages, base_price, availability_status, stock,
       vendor_id, price_override, delivery_override, print_type, print_side, binding_type,
-      branch_id, academic_year_id, semester_id, subject_id
+      branch_id, academic_year_id, semester_id, subject_id,
+      pdf_source, public_url, pricing_mode
     } = body;
 
     const result = await env.DB.prepare(`
@@ -152,12 +161,17 @@ export async function handlePatchManual(request, env, context, id) {
           branch_id = coalesce(?, branch_id),
           academic_year_id = coalesce(?, academic_year_id),
           semester_id = coalesce(?, semester_id),
-          subject_id = coalesce(?, subject_id)
+          subject_id = coalesce(?, subject_id),
+          pdf_source = coalesce(?, pdf_source),
+          public_url = coalesce(?, public_url),
+          pricing_mode = coalesce(?, pricing_mode)
       WHERE id = ?
     `).bind(
       title ?? null, description ?? null, pages ?? null, base_price ?? null, availability_status ?? null, stock ?? null,
       vendor_id ?? null, price_override ?? null, delivery_override ?? null, print_type ?? null, print_side ?? null, binding_type ?? null,
-      branch_id ?? null, academic_year_id ?? null, semester_id ?? null, subject_id ?? null, id
+      branch_id ?? null, academic_year_id ?? null, semester_id ?? null, subject_id ?? null,
+      pdf_source ?? null, public_url ?? null, pricing_mode ?? null,
+      id
     ).run();
 
     if (result.meta.changes === 0) {

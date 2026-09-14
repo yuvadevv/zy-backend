@@ -16,7 +16,7 @@ export const DEFAULT_PRICING_SETTINGS = {
   platformFeeEnabled: false
 };
 
-export function calculateManualPrice(pages, printOptions, pricingSettings = null, priceOverride = null) {
+export function calculateManualPrice(pages, printOptions, pricingSettings = null, priceOverride = null, bindingRules = []) {
   const settings = pricingSettings || DEFAULT_PRICING_SETTINGS;
   
   const isColor = printOptions.color;
@@ -35,23 +35,41 @@ export function calculateManualPrice(pages, printOptions, pricingSettings = null
   const sheets = isSingleSided ? pages : Math.ceil(pages / 2);
   const printingCostPerUnit = sheets * printRate;
   
-  let bindingCostPerUnit = settings.bindingFees.none;
+  let bindingCostPerUnit = settings.bindingFees.none || 0;
+  let bindingRuleId = null;
+  let bindingError = null;
+
   if (bindingType === 'spiral') {
-    bindingCostPerUnit = settings.bindingFees.spiral;
+    // Dynamically calculate based on binding rules
+    if (bindingRules && bindingRules.length > 0) {
+      const activeRules = bindingRules.filter(r => r.is_active === 1 || r.is_active === true);
+      const matchedRule = activeRules.find(r => pages >= r.min_pages && pages <= r.max_pages);
+      
+      if (matchedRule) {
+        bindingCostPerUnit = matchedRule.customer_unit_price || matchedRule.price || 0;
+        bindingRuleId = matchedRule.id;
+      } else {
+        bindingError = 'Spiral binding is currently unavailable for this page count.';
+      }
+    } else {
+      // Fallback if no rules exist (but ideally rules should be seeded)
+      bindingCostPerUnit = settings.bindingFees.spiral || 30.0;
+    }
   } else if (bindingType === 'softbound') {
-    bindingCostPerUnit = settings.bindingFees.soft_bound;
+    bindingCostPerUnit = settings.bindingFees.soft_bound || 50.0;
   } else if (bindingType === 'hardbound') {
-    bindingCostPerUnit = settings.bindingFees.hard_bound;
+    bindingCostPerUnit = settings.bindingFees.hard_bound || 100.0;
+  } else if (bindingType === 'none') {
+    bindingCostPerUnit = 0;
   }
   
   let unitPrice = printingCostPerUnit + bindingCostPerUnit;
   let isCustomPricing = false;
 
-  // Base manual fixed prices are removed, price is always based on printing + binding
-  // if (priceOverride !== undefined && priceOverride !== null) {
-  //   unitPrice = priceOverride;
-  //   isCustomPricing = true;
-  // }
+  if (priceOverride !== undefined && priceOverride !== null) {
+    unitPrice = priceOverride;
+    isCustomPricing = true;
+  }
 
   const printingCost = printingCostPerUnit * copies;
   const bindingCost = bindingCostPerUnit * copies;
@@ -66,7 +84,9 @@ export function calculateManualPrice(pages, printOptions, pricingSettings = null
     unitPrice,
     isCustomPricing,
     printingRate: printRate,
-    bindingRate: bindingCostPerUnit
+    bindingRate: bindingCostPerUnit,
+    bindingRuleId,
+    bindingError
   };
 }
 

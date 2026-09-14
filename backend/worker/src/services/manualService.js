@@ -32,7 +32,9 @@ export async function getManuals(db, params = {}) {
       m.pages, 
       m.base_price, 
       m.stock,
-      m.availability_status as availability 
+      m.availability_status as availability,
+      m.pdf_source,
+      m.public_url
     FROM manuals m
     JOIN subjects s ON m.subject_id = s.id
     JOIN semesters sem ON s.semester_id = sem.id
@@ -85,7 +87,9 @@ export async function getManualById(db, id) {
       m.pages, 
       m.base_price, 
       m.stock,
-      m.availability_status as availability 
+      m.availability_status as availability,
+      m.pdf_source,
+      m.public_url
     FROM manuals m
     JOIN subjects s ON m.subject_id = s.id
     JOIN semesters sem ON s.semester_id = sem.id

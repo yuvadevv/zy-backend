@@ -11,6 +11,7 @@ import { adminRouter } from './routes/admin.routes.js';
 import { vendorRouter } from './routes/vendor.routes.js';
 import { refundsRouter } from './routes/refunds.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
+import { customFilesRouter } from './routes/custom_files.routes.js';
 import { errorResponse } from './utils/response.js';
 
 // Initialize Root Application Router
@@ -34,6 +35,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/vendor', vendorRouter);
 app.use('/api/refunds', refundsRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/custom-files', customFilesRouter);
 
 let isInitialized = false;
 let initPromise = null;
@@ -75,13 +77,14 @@ const ensureDefaultBanners = async (env) => {
 
 export default {
   async fetch(request, env, ctx) {
-    // 1. Handle CORS Preflight
+    const origin = request.headers.get('Origin') || 'http://localhost:3000';
     if (request.method === 'OPTIONS') {
       return new Response(null, {
         headers: {
-          'Access-Control-Allow-Origin': request.headers.get('Origin') || '*',
+          'Access-Control-Allow-Origin': origin,
           'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+          'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, Cookie',
+          'Access-Control-Allow-Credentials': 'true',
           'Access-Control-Max-Age': '86400',
         },
       });
@@ -104,9 +107,11 @@ export default {
 
     // 4. Inject CORS headers on final response
     const corsHeaders = new Headers(response.headers);
-    corsHeaders.set('Access-Control-Allow-Origin', request.headers.get('Origin') || '*');
+    const finalOrigin = request.headers.get('Origin') || 'http://localhost:3000';
+    corsHeaders.set('Access-Control-Allow-Origin', finalOrigin);
     corsHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    corsHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    corsHeaders.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Cookie');
+    corsHeaders.set('Access-Control-Allow-Credentials', 'true');
 
     return new Response(response.body, {
       status: response.status,
@@ -141,6 +146,29 @@ export default {
           console.error(`Failed to clean up document ${doc.id}`, e);
         }
       }
+
+      // Clean up temporary custom files (e.g. older than 24 hours)
+      const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000;
+      const { results: customFilesResults } = await env.DB.prepare(
+        `SELECT id, r2_bucket, r2_object_key FROM custom_files 
+         WHERE is_temporary = 1 AND created_at <= ? AND is_deleted = 0
+         LIMIT 100`
+      ).bind(twentyFourHoursAgo).all();
+
+      for (const cf of customFilesResults || []) {
+        try {
+          // Using aws4fetch or SDK here is heavy for cron, we can use a generic deletion or just rely on R2 lifecycle policies
+          // But to match current logic, we can try to initialize S3Client here, or just mark them deleted in DB
+          // Let's just mark deleted in DB. Real deletion can be done via R2 bucket lifecycle for temporary prefixes
+          await env.DB.prepare(`UPDATE custom_files SET is_deleted = 1, upload_status = 'DELETED', deleted_at = ? WHERE id = ?`)
+            .bind(now, cf.id)
+            .run();
+          console.log(`Successfully cleaned up custom_file ${cf.id}`);
+        } catch (e) {
+          console.error(`Failed to clean up custom_file ${cf.id}`, e);
+        }
+      }
+
     } catch (e) {
       console.error('Failed to query expired documents:', e);
     }

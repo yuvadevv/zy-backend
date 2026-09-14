@@ -18,14 +18,23 @@ function trackActivity(env, userId) {
 }
 
 export async function verifyAuth(request, env) {
+  let token = null;
+
   const authHeader = request.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return { error: errorResponse('UNAUTHORIZED', 'Authentication required', 401) };
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else {
+    const cookieHeader = request.headers.get('Cookie');
+    if (cookieHeader) {
+      const match = cookieHeader.match(/(?:^|;\s*)bl_auth_token=([^;]+)/);
+      if (match) {
+        token = decodeURIComponent(match[1]);
+      }
+    }
   }
 
-  const token = authHeader.split(' ')[1];
   if (!token) {
-    return { error: errorResponse('UNAUTHORIZED', 'Malformed token', 401) };
+    return { error: errorResponse('UNAUTHORIZED', 'Authentication required', 401) };
   }
 
   if (!env.SUPABASE_URL) {

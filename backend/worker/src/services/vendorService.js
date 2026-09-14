@@ -32,7 +32,7 @@ export async function getVendorOrders(db, vendorId, { status, search, page = 1, 
     LEFT JOIN branches b ON s.branch_id = b.id
     LEFT JOIN payments p ON o.internal_id = p.order_id AND p.status = 'paid'
     LEFT JOIN vendors v ON o.vendor_id = v.id
-    WHERE o.status != 'draft'
+    WHERE o.status NOT IN ('draft', 'payment_pending')
   `;
   
   const params = [];
@@ -57,7 +57,7 @@ export async function getVendorOrders(db, vendorId, { status, search, page = 1, 
     SELECT COUNT(*) as total 
     FROM orders o
     LEFT JOIN students s ON o.student_id = s.id
-    WHERE o.status != 'draft'
+    WHERE o.status NOT IN ('draft', 'payment_pending')
   `;
   const countParams = [];
   
@@ -105,7 +105,7 @@ export async function getVendorOrderDetails(db, vendorId, publicOrderId) {
     LEFT JOIN students s ON o.student_id = s.id
     LEFT JOIN branches b ON s.branch_id = b.id
     LEFT JOIN payments p ON o.internal_id = p.order_id AND p.status = 'paid'
-    WHERE o.public_id = ? AND o.status != 'draft'
+    WHERE o.public_id = ? AND o.status NOT IN ('draft', 'payment_pending')
   `).bind(publicOrderId).first();
 
   if (!order) return null;
@@ -196,7 +196,7 @@ export async function getVendorDashboardStats(db, vendorId) {
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'ready_for_pickup'`).first(),
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'out_for_delivery'`).first(),
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'delivered'`).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE created_at >= ? AND status != 'draft'`).bind(startOfDay).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE created_at >= ? AND status NOT IN ('draft', 'payment_pending')`).bind(startOfDay).first(),
     db.prepare(`SELECT password_change_required FROM vendors WHERE id = ?`).bind(vendorId).first()
   ]);
 
@@ -220,7 +220,7 @@ export async function getVendorDocumentAccess(db, vendorId, documentId) {
     SELECT oi.id 
     FROM order_items oi
     JOIN orders o ON oi.order_id = o.internal_id
-    WHERE oi.document_id = ? AND o.status != 'draft'
+    WHERE oi.document_id = ? AND o.status NOT IN ('draft', 'payment_pending')
   `).bind(documentId).first();
 
   if (!linkCheck) {
@@ -248,7 +248,7 @@ export async function getVendorDocuments(db, vendorId, { search, page = 1, limit
     JOIN orders o ON oi.order_id = o.internal_id
     JOIN students s ON o.student_id = s.id
     LEFT JOIN vendors v ON o.vendor_id = v.id
-    WHERE o.status != 'draft' AND d.deleted_at IS NULL
+    WHERE o.status NOT IN ('draft', 'payment_pending') AND d.deleted_at IS NULL
   `;
   let countQuery = `
     SELECT COUNT(*) as count
@@ -256,7 +256,7 @@ export async function getVendorDocuments(db, vendorId, { search, page = 1, limit
     JOIN order_items oi ON oi.document_id = d.id
     JOIN orders o ON oi.order_id = o.internal_id
     JOIN students s ON o.student_id = s.id
-    WHERE o.status != 'draft' AND d.deleted_at IS NULL
+    WHERE o.status NOT IN ('draft', 'payment_pending') AND d.deleted_at IS NULL
   `;
   const params = [];
   const countParams = [];

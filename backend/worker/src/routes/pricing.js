@@ -19,8 +19,13 @@ export async function handleCalculatePricing(request, env, context) {
       } catch (e) {}
     }
 
+    // Fetch binding pricing rules
+    const rulesResult = await env.DB.prepare(`SELECT id, min_pages, max_pages, price, is_active FROM binding_pricing_rules`).all();
+    const bindingRules = rulesResult.results || [];
+
     const itemSubtotals = [];
     const detailedItems = [];
+    let hasBindingError = false;
 
     for (const item of items) {
       let pages = item.pages || 0;
@@ -37,9 +42,16 @@ export async function handleCalculatePricing(request, env, context) {
         if (doc) {
           pages = doc.page_count;
         }
+      } else if (item.serviceType === 'code_tantra_files') {
+        pages = item.pages || (item.meta && item.meta.totalPages) || 0;
       }
 
-      const pricing = calculateManualPrice(pages, item.printOptions, pricingSettings, priceOverride);
+      const pricing = calculateManualPrice(pages, item.printOptions, pricingSettings, priceOverride, bindingRules);
+      
+      if (pricing.bindingError) {
+        return errorResponse('BAD_REQUEST', pricing.bindingError, 400);
+      }
+
       itemSubtotals.push(pricing.subtotal);
       
       detailedItems.push({

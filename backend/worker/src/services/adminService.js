@@ -11,11 +11,10 @@ export const VALID_TRANSITIONS = {
   // Terminal states: delivered, cancelled, rejected, refunded
 };
 
-
 // ---------------------------------------------------------
 // AUTHORITATIVE ORDER DTO MAPPING
 // ---------------------------------------------------------
-function buildOrderDTO(o, items = []) {
+function buildOrderDTO(o, items = [], customFiles = []) {
   return {
     publicId: o.public_id,
     createdAt: o.created_at,
@@ -38,6 +37,7 @@ function buildOrderDTO(o, items = []) {
       semesterLabel: o.semesterLabel || 'N/A'
     },
     items: items,
+    customFiles: customFiles,
     pricing: {
       subtotal: o.grand_total - o.delivery_fee - o.platform_fee - o.gst + o.discount,
       deliveryFee: o.delivery_fee,
@@ -71,7 +71,7 @@ export async function getOrders(db, params) {
       s.branch_id,
       s.study_year_id,
       s.semester_id,
-      p.status as paymentStatus,
+      o.payment_status as paymentStatus,
       b.code as branchCode,
       ay.label as yearLabel,
       sem.label as semesterLabel,
@@ -93,27 +93,35 @@ export async function getOrders(db, params) {
         LEFT JOIN manuals m ON oi.manual_id = m.id
         LEFT JOIN documents d ON oi.document_id = d.id
         WHERE oi.order_id = o.internal_id
-      ) as items_json
+      ) as items_json,
+      (
+        SELECT json_group_array(json_object(
+          'fileId', cf.id,
+          'fileName', cf.original_filename,
+          'fileSize', cf.file_size,
+          'uploadStatus', cf.upload_status
+        ))
+        FROM custom_files cf
+        WHERE cf.order_id = o.internal_id AND cf.is_deleted = 0
+      ) as custom_files_json
     FROM orders o
     LEFT JOIN students s ON o.student_id = s.id
     LEFT JOIN branches b ON s.branch_id = b.id
     LEFT JOIN academic_years ay ON s.study_year_id = ay.id
     LEFT JOIN semesters sem ON s.semester_id = sem.id
-    LEFT JOIN payments p ON o.internal_id = p.order_id AND p.status = 'paid'
-    WHERE 1=1
+    WHERE o.status != 'payment_pending'
   `;
   
   let countQuery = `
     SELECT COUNT(DISTINCT o.internal_id) as total 
     FROM orders o
     LEFT JOIN students s ON o.student_id = s.id
-    LEFT JOIN payments p ON o.internal_id = p.order_id AND p.status = 'paid'
   `;
   
   if (manual_id && manual_id !== 'all') {
     countQuery += ` LEFT JOIN order_items oi_count ON oi_count.order_id = o.internal_id`;
   }
-  countQuery += ` WHERE 1=1`;
+  countQuery += ` WHERE o.status != 'payment_pending'`;
 
   const qParams = [];
   
@@ -172,16 +180,24 @@ export async function getOrders(db, params) {
     query += mClause; countQuery += ` AND oi_count.manual_id = ?`; qParams.push(manual_id);
   }
   if (order_type && order_type !== 'all') {
-    const otClause = ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.item_type = ?)`;
-    query += otClause; 
-    if (!(manual_id && manual_id !== 'all')) {
-        // Since countQuery already has WHERE 1=1 and other conditions might have been appended,
-        // we can just use EXISTS for count as well to keep it simple and avoid LEFT JOIN mess.
-        countQuery += ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.item_type = ?)`;
+    if (order_type === 'custom_upload') {
+      const otClause = ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.item_type IN ('custom', 'code_tantra_files'))`;
+      query += otClause; 
+      if (!(manual_id && manual_id !== 'all')) {
+          countQuery += ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.item_type IN ('custom', 'code_tantra_files'))`;
+      } else {
+          countQuery += ` AND oi_count.item_type IN ('custom', 'code_tantra_files')`;
+      }
     } else {
-        countQuery += ` AND oi_count.item_type = ?`;
+      const otClause = ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.item_type = ?)`;
+      query += otClause; 
+      if (!(manual_id && manual_id !== 'all')) {
+          countQuery += ` AND EXISTS (SELECT 1 FROM order_items oi3 WHERE oi3.order_id = o.internal_id AND oi3.item_type = ?)`;
+      } else {
+          countQuery += ` AND oi_count.item_type = ?`;
+      }
+      qParams.push(order_type);
     }
-    qParams.push(order_type);
   }
 
   let orderBy = ` ORDER BY o.created_at DESC`;
@@ -209,7 +225,7 @@ export async function getOrders(db, params) {
   const countResult = await countStmt.first();
   
   return {
-    orders: result.results.map(o => buildOrderDTO(o, JSON.parse(o.items_json || '[]'))),
+    orders: result.results.map(o => buildOrderDTO(o, JSON.parse(o.items_json || '[]'), JSON.parse(o.custom_files_json || '[]'))),
     total: countResult.total,
     page: limit === 'all' ? 1 : page,
     limit: limit === 'all' ? countResult.total : limit,
@@ -252,21 +268,31 @@ export async function getOrderDetails(db, publicOrderId, vendorId = null) {
   if (!orderRow) return null;
 
   const items = await db.prepare(`
-    SELECT oi.item_type, oi.manual_id as manualId, COALESCE(m.title, 'Document') as title, oi.copies as quantity, 
+    SELECT oi.item_type, oi.manual_id as manualId, 
+           COALESCE(m.title, cf.original_filename, d.original_filename, 'Document') as title, 
+           oi.copies as quantity, 
            oi.page_count as pages, oi.print_type as printType, oi.color_mode as colorMode, 
            oi.binding_type as binding, oi.base_price as unitPrice, oi.item_total as totalPrice,
-           d.original_filename as document_filename, d.r2_object_key, d.id as document_uuid
+           COALESCE(d.original_filename, cf.original_filename) as document_filename, 
+           COALESCE(d.r2_object_key, cf.r2_object_key) as r2_object_key, 
+           COALESCE(d.id, cf.id) as document_uuid
     FROM order_items oi
     LEFT JOIN manuals m ON oi.manual_id = m.id
     LEFT JOIN documents d ON oi.document_id = d.id
+    LEFT JOIN custom_files cf ON oi.custom_file_id = cf.id
     WHERE oi.order_id = ?
   `).bind(orderRow.internal_id).all();
 
-  return buildOrderDTO(orderRow, items.results);
+  const customFiles = await db.prepare(`
+    SELECT id as fileId, original_filename as fileName, file_size as fileSize, upload_status as uploadStatus
+    FROM custom_files
+    WHERE order_id = ? AND is_deleted = 0
+  `).bind(orderRow.internal_id).all();
+
+  return buildOrderDTO(orderRow, items.results, customFiles.results);
 }
 
 export async function updateAdminOrderStatus(db, publicOrderId, newStatus, currentStatus, adminOrVendorId, vendorIdScope = null) {
-  // Concurrency check
   let query = `SELECT internal_id, status FROM orders WHERE public_id = ?`;
   const params = [publicOrderId];
   
@@ -284,7 +310,6 @@ export async function updateAdminOrderStatus(db, publicOrderId, newStatus, curre
     return { error: 'Order was updated elsewhere', status: 409, currentDbStatus: order.status };
   }
   
-  // Using updateAdminOrdersBulk for individual updates to ensure shared state logic
   return await updateAdminOrdersBulk(db, [publicOrderId], { status: newStatus }, adminOrVendorId, vendorIdScope);
 }
 
@@ -416,7 +441,6 @@ export async function updateAdminOrdersBulk(db, publicOrderIds, updates, adminId
 }
 
 export async function getCommonManualBatches(db, params) {
-  // Finds orders grouped by manual_id, branch_id, study_year_id, semester_id
   const { vendor_id, status } = params;
   let query = `
     SELECT 
@@ -478,7 +502,6 @@ export async function validateImportOrders(db, importRows, vendorIdScope = null)
       continue;
     }
     
-    // Check conflicts
     if (row.exportTimestamp && dbOrder.updated_at > row.exportTimestamp) {
       resultRow.isValid = false;
       resultRow.error = 'CONFLICT — ORDER CHANGED SINCE EXPORT';
@@ -487,7 +510,6 @@ export async function validateImportOrders(db, importRows, vendorIdScope = null)
       continue;
     }
     
-    // Check Status Transition
     if (row.status && row.status !== dbOrder.status) {
       const validNextStates = VALID_TRANSITIONS[dbOrder.status] || [];
       if (!validNextStates.includes(row.status)) {
@@ -524,12 +546,10 @@ export async function validateImportOrders(db, importRows, vendorIdScope = null)
 }
 
 export async function updateAdminOrderVendor(db, publicOrderId, vendorId, adminId) {
-  // Check if vendor exists and is active
   const vendor = await db.prepare(`SELECT id, status FROM vendors WHERE id = ?`).bind(vendorId).first();
   if (!vendor) return { error: 'Vendor not found', status: 404 };
   if (vendor.status !== 'active') return { error: 'Vendor is not active', status: 400 };
 
-  // Check if order exists and get previous vendor
   const order = await db.prepare(`SELECT internal_id, vendor_id FROM orders WHERE public_id = ?`).bind(publicOrderId).first();
   if (!order) return { error: 'Order not found', status: 404 };
 
@@ -559,7 +579,6 @@ export async function updateAdminOrderVendor(db, publicOrderId, vendorId, adminI
   ));
 
   await db.batch(stmts);
-
   return { success: true };
 }
 
@@ -567,7 +586,6 @@ export async function getDashboardStats(db) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   
-  // Calculate start of week (Sunday)
   const d = new Date(now);
   const day = d.getDay();
   const diff = d.getDate() - day;
@@ -575,24 +593,11 @@ export async function getDashboardStats(db) {
   
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
-  // Run aggregate queries in parallel
   const [
-    totalUsersResult,
-    activeUsersResult,
-    newUsersResult,
-    
-    ordersMetrics,
-    ordersThisWeekResult,
-    ordersThisMonthResult,
-    
-    revenueTodayResult,
-    revenueThisWeekResult,
-    revenueThisMonthResult,
-    
-    paymentsMetrics,
-    
-    chartOrdersOverTime,
-    chartOrdersByStatus
+    totalUsersResult, activeUsersResult, newUsersResult,
+    ordersMetrics, ordersThisWeekResult, ordersThisMonthResult,
+    revenueTodayResult, revenueThisWeekResult, revenueThisMonthResult,
+    paymentsMetrics, chartOrdersOverTime, chartOrdersByStatus, chartRevenueOverTime, chartOrdersByBranch
   ] = await Promise.all([
     db.prepare(`SELECT COUNT(*) as count FROM students`).first(),
     db.prepare(`SELECT COUNT(*) as count FROM students WHERE account_status = 'active'`).first(),
@@ -601,170 +606,65 @@ export async function getDashboardStats(db) {
     db.prepare(`
       SELECT 
         COUNT(*) as totalOrders,
-        SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) as todayOrders,
-        SUM(CASE WHEN status IN ('received', 'accepted') THEN 1 ELSE 0 END) as pendingOrders,
-        SUM(CASE WHEN status IN ('printing', 'binding', 'quality_check', 'packed') THEN 1 ELSE 0 END) as printingOrders,
-        SUM(CASE WHEN status IN ('ready_for_pickup', 'out_for_delivery') THEN 1 ELSE 0 END) as readyOrders,
-        SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as deliveredOrders,
-        SUM(CASE WHEN status IN ('cancelled', 'rejected', 'failed', 'refunded') THEN 1 ELSE 0 END) as cancelledOrders
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pendingOrders,
+        SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processingOrders,
+        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completedOrders
       FROM orders
-    `).bind(today).first(),
-
+    `).first(),
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE created_at >= ?`).bind(startOfWeek).first(),
     db.prepare(`SELECT COUNT(*) as count FROM orders WHERE created_at >= ?`).bind(startOfMonth).first(),
     
-    db.prepare(`SELECT SUM(amount) as total FROM payments WHERE status = 'paid' AND paid_at >= ?`).bind(today).first(),
-    db.prepare(`SELECT SUM(amount) as total FROM payments WHERE status = 'paid' AND paid_at >= ?`).bind(startOfWeek).first(),
-    db.prepare(`SELECT SUM(amount) as total FROM payments WHERE status = 'paid' AND paid_at >= ?`).bind(startOfMonth).first(),
+    db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'successful' AND created_at >= ?`).bind(today).first(),
+    db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'successful' AND created_at >= ?`).bind(startOfWeek).first(),
+    db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'successful' AND created_at >= ?`).bind(startOfMonth).first(),
     
     db.prepare(`
       SELECT 
-        SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) as paidOrders,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pendingPayments
+        COUNT(*) as totalPayments,
+        SUM(CASE WHEN status = 'successful' THEN amount ELSE 0 END) as totalRevenue,
+        SUM(CASE WHEN status = 'refunded' THEN amount ELSE 0 END) as refundedAmount
       FROM payments
     `).first(),
-
-    // Simple last 7 days chart data (SQLite date function trick using ms)
+    
     db.prepare(`
-      SELECT 
-        date(created_at / 1000, 'unixepoch') as day, 
-        COUNT(*) as count
-      FROM orders
-      WHERE created_at >= ?
-      GROUP BY day
-      ORDER BY day ASC
-    `).bind(today - (7 * 24 * 60 * 60 * 1000)).all(),
-
+      SELECT date(datetime(created_at/1000, 'unixepoch', 'localtime')) as date, COUNT(*) as count 
+      FROM orders 
+      WHERE created_at >= ? 
+      GROUP BY date ORDER BY date
+    `).bind(now.getTime() - 30*24*60*60*1000).all(),
+    
+    db.prepare(`SELECT status, COUNT(*) as count FROM orders GROUP BY status`).all(),
+    
     db.prepare(`
-      SELECT status, COUNT(*) as count
-      FROM orders
-      GROUP BY status
-    `).all()
-  ]);
-
-  return {
-    users: {
-      total: totalUsersResult.count || 0,
-      active: activeUsersResult.count || 0,
-      newToday: newUsersResult.count || 0,
-    },
-    orders: {
-      total: ordersMetrics.totalOrders || 0,
-      today: ordersMetrics.todayOrders || 0,
-      thisWeek: ordersThisWeekResult.count || 0,
-      thisMonth: ordersThisMonthResult.count || 0,
-      pending: ordersMetrics.pendingOrders || 0,
-      printing: ordersMetrics.printingOrders || 0,
-      ready: ordersMetrics.readyOrders || 0,
-      delivered: ordersMetrics.deliveredOrders || 0,
-      cancelled: ordersMetrics.cancelledOrders || 0,
-    },
-    revenue: {
-      today: revenueTodayResult.total || 0,
-      thisWeek: revenueThisWeekResult.total || 0,
-      thisMonth: revenueThisMonthResult.total || 0,
-    },
-    payments: {
-      paid: paymentsMetrics.paidOrders || 0,
-      pending: paymentsMetrics.pendingPayments || 0,
-    },
-    charts: {
-      ordersOverTime: chartOrdersOverTime.results,
-      ordersByStatus: chartOrdersByStatus.results,
-    }
-  };
-}
-
-export async function getDocumentAccessMetadata(db, documentId) {
-  const now = Date.now();
-  return await db.prepare(`
-    SELECT r2_object_key, original_filename, file_type
-    FROM documents 
-    WHERE id = ? AND deleted_at IS NULL AND expires_at > ?
-  `).bind(documentId, now).first();
-}
-
-
-export async function getPayments(db, { search, status, page = 1, limit = 25 }) {
-  let query = `
-    SELECT p.*, o.public_id as order_public_id, s.name as student_name
-    FROM payments p
-    LEFT JOIN orders o ON p.order_id = o.internal_id
-    LEFT JOIN students s ON o.student_id = s.id
-    WHERE 1=1
-  `;
-  const params = [];
-  if (status && status !== 'all') { query += ' AND p.status = ?'; params.push(status); }
-  if (search) { query += ' AND (o.public_id LIKE ? OR p.provider_order_id LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
-  query += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
-  params.push(limit, (page - 1) * limit);
-
-  const results = await db.prepare(query).bind(...params).all();
-  return { payments: results.results, page, limit };
-}
-
-export async function getVendors(db, { search, status, page = 1, limit = 25 }) {
-  let query = 'SELECT id, name, email, status, created_at FROM vendors WHERE 1=1';
-  const params = [];
-  if (status && status !== 'all') { query += ' AND status = ?'; params.push(status); }
-  if (search) { query += ' AND (name LIKE ? OR email LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  params.push(limit, (page - 1) * limit);
-
-  const results = await db.prepare(query).bind(...params).all();
-  return { vendors: results.results, page, limit };
-}
-
-export async function getAuditLogs(db, { actor, action, page = 1, limit = 25 }) {
-  let query = 'SELECT * FROM audit_logs WHERE 1=1';
-  const params = [];
-  if (actor) { query += ' AND actor_id = ?'; params.push(actor); }
-  if (action && action !== 'all') { query += ' AND action = ?'; params.push(action); }
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  params.push(limit, (page - 1) * limit);
-
-  const results = await db.prepare(query).bind(...params).all();
-  return { logs: results.results, page, limit };
-}
-
-export async function getAnalytics(db) {
-  // Reuse dashboard stats for all the KPI metrics to ensure consistency
-  const dashboardStats = await getDashboardStats(db);
-  
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const sevenDaysAgo = today - (7 * 24 * 60 * 60 * 1000);
-
-  // Add missing charts: Revenue over time, Orders by branch
-  const [
-    chartRevenueOverTime,
-    chartOrdersByBranch
-  ] = await Promise.all([
-    db.prepare(`
-      SELECT 
-        date(paid_at / 1000, 'unixepoch') as day, 
-        SUM(amount) as revenue
-      FROM payments
-      WHERE status = 'paid' AND paid_at >= ?
-      GROUP BY day
-      ORDER BY day ASC
-    `).bind(sevenDaysAgo).all(),
+      SELECT date(datetime(created_at/1000, 'unixepoch', 'localtime')) as date, SUM(amount) as revenue 
+      FROM payments 
+      WHERE status = 'successful' AND created_at >= ? 
+      GROUP BY date ORDER BY date
+    `).bind(now.getTime() - 30*24*60*60*1000).all(),
 
     db.prepare(`
-      SELECT b.code as branch, COUNT(o.internal_id) as count
+      SELECT COALESCE(b.name, 'Unknown') as branch, COUNT(o.internal_id) as count
       FROM orders o
       JOIN students s ON o.student_id = s.id
-      JOIN branches b ON s.branch_id = b.id
-      GROUP BY b.code
+      LEFT JOIN branches b ON s.branch_id = b.id
+      GROUP BY s.branch_id
     `).all()
   ]);
 
   return {
-    ...dashboardStats,
+    users: { total: totalUsersResult?.count || 0, active: activeUsersResult?.count || 0, newToday: newUsersResult?.count || 0 },
+    orders: {
+      total: ordersMetrics?.totalOrders || 0, pending: ordersMetrics?.pendingOrders || 0,
+      processing: ordersMetrics?.processingOrders || 0, completed: ordersMetrics?.completedOrders || 0,
+      thisWeek: ordersThisWeekResult?.count || 0, thisMonth: ordersThisMonthResult?.count || 0
+    },
+    revenue: {
+      today: revenueTodayResult?.total || 0, thisWeek: revenueThisWeekResult?.total || 0,
+      thisMonth: revenueThisMonthResult?.total || 0, total: paymentsMetrics?.totalRevenue || 0
+    },
     charts: {
-      ...dashboardStats.charts,
-      revenueOverTime: chartRevenueOverTime.results,
-      ordersByBranch: chartOrdersByBranch.results
+      ordersOverTime: chartOrdersOverTime?.results || [], ordersByStatus: chartOrdersByStatus?.results || [],
+      revenueOverTime: chartRevenueOverTime?.results || [], ordersByBranch: chartOrdersByBranch?.results || []
     }
   };
 }
@@ -775,20 +675,14 @@ export async function getContent(db) {
     let meta = {};
     try { meta = JSON.parse(row.metadata || '{}'); } catch(e) {}
     return {
-      id: row.id,
-      type: row.content_type,
-      title: row.title,
+      id: row.id, type: row.content_type, title: row.title,
       description: meta.subtitle || meta.message || '',
       link_url: meta.url || meta.cta_url || '',
       cta_label: meta.cta || meta.cta_label || '',
       image_url: meta.image_key || meta.image_url || '',
-      theme: meta.theme || '',
-      icon: meta.icon || '',
-      priority: row.priority,
-      is_active: row.status === 'active',
-      start_time: row.start_time,
-      end_time: row.end_time,
-      created_at: row.created_at
+      theme: meta.theme || '', icon: meta.icon || '',
+      priority: row.priority, is_active: row.status === 'active',
+      start_time: row.start_time, end_time: row.end_time, created_at: row.created_at
     };
   });
   return { content: parsed };
@@ -894,7 +788,7 @@ export async function getExports(db, type, params = {}) {
   if (results.results.length === 0) return '';
   const headers = Object.keys(results.results[0]).join(',');
   const rows = results.results.map(row => Object.values(row).map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(','));
-  return [headers, ...rows].join('\n');
+  return [headers, ...rows].join('\\n');
 }
 
 export async function getPublicStatus(db) {
@@ -905,7 +799,6 @@ export async function getPublicStatus(db) {
   }
   return { maintenanceMode: false, maintenanceMessage: '' };
 }
-
 
 export async function getStudentFullDetails(db, studentId) {
   // 1. Resolve canonical student
@@ -1044,5 +937,102 @@ export async function getStudentFullDetails(db, studentId) {
     refunds,
     documents,
     activity
+  };
+}
+
+export async function getDocumentAccessMetadata(db, documentId) {
+  const now = Date.now();
+  return await db.prepare(`
+    SELECT r2_object_key, original_filename, file_type
+    FROM documents 
+    WHERE id = ? AND deleted_at IS NULL AND expires_at > ?
+    UNION ALL
+    SELECT r2_object_key, original_filename, 'application/pdf' as file_type
+    FROM custom_files
+    WHERE id = ? AND is_deleted = 0
+  `).bind(documentId, now, documentId).first();
+}
+
+export async function getPayments(db, { search, status, page = 1, limit = 25 }) {
+  let query = `
+    SELECT p.*, o.public_id as order_public_id, s.name as student_name
+    FROM payments p
+    LEFT JOIN orders o ON p.order_id = o.internal_id
+    LEFT JOIN students s ON o.student_id = s.id
+    WHERE 1=1
+  `;
+  const params = [];
+  if (status && status !== 'all') { query += ' AND p.status = ?'; params.push(status); }
+  if (search) { query += ' AND (o.public_id LIKE ? OR p.provider_order_id LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+  query += ' ORDER BY p.created_at DESC LIMIT ? OFFSET ?';
+  params.push(limit, (page - 1) * limit);
+
+  const results = await db.prepare(query).bind(...params).all();
+  return { payments: results.results, page, limit };
+}
+
+export async function getVendors(db, { search, status, page = 1, limit = 25 }) {
+  let query = 'SELECT id, name, email, status, created_at FROM vendors WHERE 1=1';
+  const params = [];
+  if (status && status !== 'all') { query += ' AND status = ?'; params.push(status); }
+  if (search) { query += ' AND (name LIKE ? OR email LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  params.push(limit, (page - 1) * limit);
+
+  const results = await db.prepare(query).bind(...params).all();
+  return { vendors: results.results, page, limit };
+}
+
+export async function getAuditLogs(db, { actor, action, page = 1, limit = 25 }) {
+  let query = 'SELECT * FROM audit_logs WHERE 1=1';
+  const params = [];
+  if (actor) { query += ' AND actor_id = ?'; params.push(actor); }
+  if (action && action !== 'all') { query += ' AND action = ?'; params.push(action); }
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  params.push(limit, (page - 1) * limit);
+
+  const results = await db.prepare(query).bind(...params).all();
+  return { logs: results.results, page, limit };
+}
+
+export async function getAnalytics(db) {
+  // Reuse dashboard stats for all the KPI metrics to ensure consistency
+  const dashboardStats = await getDashboardStats(db);
+  
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const sevenDaysAgo = today - (7 * 24 * 60 * 60 * 1000);
+
+  // Add missing charts: Revenue over time, Orders by branch
+  const [
+    chartRevenueOverTime,
+    chartOrdersByBranch
+  ] = await Promise.all([
+    db.prepare(`
+      SELECT 
+        date(paid_at / 1000, 'unixepoch') as day, 
+        SUM(amount) as revenue
+      FROM payments
+      WHERE status = 'paid' AND paid_at >= ?
+      GROUP BY day
+      ORDER BY day ASC
+    `).bind(sevenDaysAgo).all(),
+
+    db.prepare(`
+      SELECT b.code as branch, COUNT(o.internal_id) as count
+      FROM orders o
+      JOIN students s ON o.student_id = s.id
+      JOIN branches b ON s.branch_id = b.id
+      GROUP BY b.code
+    `).all()
+  ]);
+
+  return {
+    ...dashboardStats,
+    charts: {
+      ...dashboardStats.charts,
+      revenueOverTime: chartRevenueOverTime.results,
+      ordersByBranch: chartOrdersByBranch.results
+    }
   };
 }
