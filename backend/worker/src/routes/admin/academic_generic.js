@@ -3,6 +3,16 @@ import { hasPermission } from './roles.js';
 
 const ALLOWED_ENTITIES = ['colleges', 'branches', 'academic_years', 'semesters', 'sections', 'blocks', 'classrooms'];
 
+const ALLOWED_COLUMNS = {
+  colleges: ['name', 'code', 'status'],
+  branches: ['college_id', 'name', 'code', 'status'],
+  academic_years: ['label', 'value', 'status'],
+  semesters: ['academic_year_id', 'label', 'value', 'status'],
+  sections: ['name', 'status'],
+  blocks: ['college_id', 'name', 'status'],
+  classrooms: ['block_id', 'name', 'status']
+};
+
 export async function handleGenericGet(request, env, context, entity) {
   if (!ALLOWED_ENTITIES.includes(entity)) return errorResponse('NOT_FOUND', 'Entity not found', 404);
   const hasAccess = await hasPermission(env.DB, context.admin.id, 'academic.manage');
@@ -28,12 +38,25 @@ export async function handleGenericPost(request, env, context, entity) {
     const id = crypto.randomUUID();
     const now = Date.now();
     
-    const keys = Object.keys(body);
-    const values = Object.values(body);
+    // Filter payload against whitelist to prevent SQL injection
+    const allowed = ALLOWED_COLUMNS[entity] || [];
+    const sanitizedBody = {};
+    for (const key of Object.keys(body)) {
+      if (allowed.includes(key)) {
+        sanitizedBody[key] = body[key];
+      }
+    }
+
+    if (!sanitizedBody.status) {
+      sanitizedBody.status = 'active';
+    }
+
+    const keys = Object.keys(sanitizedBody);
+    const values = Object.values(sanitizedBody);
     
-    const columns = ['id', 'status', ...keys].join(', ');
-    const placeholders = ['?', '?', ...keys.map(() => '?')].join(', ');
-    const binds = [id, body.status || 'active', ...values];
+    const columns = ['id', ...keys].join(', ');
+    const placeholders = ['?', ...keys.map(() => '?')].join(', ');
+    const binds = [id, ...values];
 
     await env.DB.prepare(`INSERT INTO ${entity} (${columns}) VALUES (${placeholders})`).bind(...binds).run();
     
@@ -59,11 +82,21 @@ export async function handleGenericPatch(request, env, context, entity, id) {
 
   try {
     const body = await request.json();
-    const keys = Object.keys(body);
+    
+    // Filter payload against whitelist to prevent SQL injection
+    const allowed = ALLOWED_COLUMNS[entity] || [];
+    const sanitizedBody = {};
+    for (const key of Object.keys(body)) {
+      if (allowed.includes(key)) {
+        sanitizedBody[key] = body[key];
+      }
+    }
+
+    const keys = Object.keys(sanitizedBody);
     if (keys.length === 0) return errorResponse('BAD_REQUEST', 'No fields to update', 400);
 
     const setClause = keys.map(k => `${k} = ?`).join(', ');
-    const values = Object.values(body);
+    const values = Object.values(sanitizedBody);
 
     const result = await env.DB.prepare(`UPDATE ${entity} SET ${setClause} WHERE id = ?`)
       .bind(...values, id).run();

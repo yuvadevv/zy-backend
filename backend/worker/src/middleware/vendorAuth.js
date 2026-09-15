@@ -58,5 +58,14 @@ export async function verifyVendorAuth(request, env) {
     return { error: errorResponse('FORBIDDEN', 'Access denied. Active Vendor privileges required.', 403) };
   }
 
+  // Auto-link supabase_user_id if it was matched by email fallback
+  if (vendorRecord.supabase_user_id !== supabaseUserId) {
+    try {
+      await env.DB.prepare('UPDATE vendors SET supabase_user_id = ? WHERE id = ?').bind(supabaseUserId, vendorRecord.id).run();
+    } catch (e) {
+      console.error('vendorAuth: Failed to link supabase_user_id:', e);
+    }
+  }
+
   return { context: { vendor: { id: vendorRecord.id, supabase_user_id: supabaseUserId, email: payload.email } } };
 }

@@ -32,10 +32,10 @@ export async function getVendorOrders(db, vendorId, { status, search, page = 1, 
     LEFT JOIN branches b ON s.branch_id = b.id
     LEFT JOIN payments p ON o.internal_id = p.order_id AND p.status = 'paid'
     LEFT JOIN vendors v ON o.vendor_id = v.id
-    WHERE o.status NOT IN ('draft', 'payment_pending')
+    WHERE o.status NOT IN ('draft', 'payment_pending') AND (o.vendor_id = ? OR o.vendor_id IS NULL)
   `;
   
-  const params = [];
+  const params = [vendorId];
   
   if (status && status !== 'all') {
     query += ` AND o.status = ?`;
@@ -57,9 +57,9 @@ export async function getVendorOrders(db, vendorId, { status, search, page = 1, 
     SELECT COUNT(*) as total 
     FROM orders o
     LEFT JOIN students s ON o.student_id = s.id
-    WHERE o.status NOT IN ('draft', 'payment_pending')
+    WHERE o.status NOT IN ('draft', 'payment_pending') AND (o.vendor_id = ? OR o.vendor_id IS NULL)
   `;
-  const countParams = [];
+  const countParams = [vendorId];
   
   if (status && status !== 'all') {
     countQuery += ` AND o.status = ?`;
@@ -186,17 +186,20 @@ export async function getVendorDashboardStats(db, vendorId) {
   today.setHours(0, 0, 0, 0);
   const startOfDay = today.getTime();
 
+  // Filter stats only for orders assigned to this vendor or unassigned
+  const condition = `AND (vendor_id = ? OR vendor_id IS NULL)`;
+  
   const [receivedResult, acceptedResult, printingResult, bindingResult, qualityCheckResult, packedResult, readyResult, outResult, deliveredResult, todayOrdersResult, vendorResult] = await Promise.all([
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'received'`).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'accepted'`).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'printing'`).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'binding'`).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'quality_check'`).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'packed'`).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'ready_for_pickup'`).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'out_for_delivery'`).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'delivered'`).first(),
-    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE created_at >= ? AND status NOT IN ('draft', 'payment_pending')`).bind(startOfDay).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'received' ${condition}`).bind(vendorId).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'accepted' ${condition}`).bind(vendorId).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'printing' ${condition}`).bind(vendorId).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'binding' ${condition}`).bind(vendorId).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'quality_check' ${condition}`).bind(vendorId).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'packed' ${condition}`).bind(vendorId).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'ready_for_pickup' ${condition}`).bind(vendorId).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'out_for_delivery' ${condition}`).bind(vendorId).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE status = 'delivered' ${condition}`).bind(vendorId).first(),
+    db.prepare(`SELECT COUNT(*) as count FROM orders WHERE created_at >= ? AND status NOT IN ('draft', 'payment_pending') ${condition}`).bind(startOfDay, vendorId).first(),
     db.prepare(`SELECT password_change_required FROM vendors WHERE id = ?`).bind(vendorId).first()
   ]);
 
@@ -220,8 +223,8 @@ export async function getVendorDocumentAccess(db, vendorId, documentId) {
     SELECT oi.id 
     FROM order_items oi
     JOIN orders o ON oi.order_id = o.internal_id
-    WHERE oi.document_id = ? AND o.status NOT IN ('draft', 'payment_pending')
-  `).bind(documentId).first();
+    WHERE oi.document_id = ? AND o.status NOT IN ('draft', 'payment_pending') AND (o.vendor_id = ? OR o.vendor_id IS NULL)
+  `).bind(documentId, vendorId).first();
 
   if (!linkCheck) {
     return null; 
@@ -248,7 +251,7 @@ export async function getVendorDocuments(db, vendorId, { search, page = 1, limit
     JOIN orders o ON oi.order_id = o.internal_id
     JOIN students s ON o.student_id = s.id
     LEFT JOIN vendors v ON o.vendor_id = v.id
-    WHERE o.status NOT IN ('draft', 'payment_pending') AND d.deleted_at IS NULL
+    WHERE o.status NOT IN ('draft', 'payment_pending') AND d.deleted_at IS NULL AND (o.vendor_id = ? OR o.vendor_id IS NULL)
   `;
   let countQuery = `
     SELECT COUNT(*) as count
@@ -256,10 +259,10 @@ export async function getVendorDocuments(db, vendorId, { search, page = 1, limit
     JOIN order_items oi ON oi.document_id = d.id
     JOIN orders o ON oi.order_id = o.internal_id
     JOIN students s ON o.student_id = s.id
-    WHERE o.status NOT IN ('draft', 'payment_pending') AND d.deleted_at IS NULL
+    WHERE o.status NOT IN ('draft', 'payment_pending') AND d.deleted_at IS NULL AND (o.vendor_id = ? OR o.vendor_id IS NULL)
   `;
-  const params = [];
-  const countParams = [];
+  const params = [vendorId];
+  const countParams = [vendorId];
 
   if (search) {
     const sClause = ` AND (d.original_filename LIKE ? OR o.public_id LIKE ? OR s.name LIKE ? OR s.roll_number LIKE ? OR s.phone LIKE ?)`;

@@ -146,6 +146,11 @@ export async function handleOAuthGoogle(request, env) {
   const fullRedirect = `${redirectTo}${redirectTo.includes('?') ? '&' : '?'}next=${encodeURIComponent(next)}`;
   const authUrl = `${env.SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(fullRedirect)}&response_type=token`;
 
+  const acceptHeader = request.headers.get('accept') || '';
+  if (acceptHeader.includes('application/json')) {
+    return successResponse({ url: authUrl });
+  }
+
   return new Response(null, {
     status: 302,
     headers: {
