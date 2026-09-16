@@ -84,6 +84,8 @@ export async function handlePostOrder(request, env, context) {
       let priceOverride = null;
       let pricingMode = 'settings';
 
+      let requiresPageVerification = false;
+
       if (item.serviceType === 'manual') {
         manualId = item.manualId || item.referenceId;
         const manual = await env.DB.prepare(`SELECT * FROM manuals WHERE id = ?`).bind(manualId).first();
@@ -107,8 +109,9 @@ export async function handlePostOrder(request, env, context) {
         const cf = await env.DB.prepare(`SELECT * FROM custom_files WHERE id = ? AND is_deleted = 0`).bind(documentId).first();
         if (!cf) return errorResponse('NOT_FOUND', `Custom file ${documentId} not found`, 404);
         
-        pages = item.pages || (item.meta && item.meta.totalPages) || 0;
+        pages = cf.page_count; // Enforce DB value, don't trust frontend payload
         pricingMode = 'settings';
+        requiresPageVerification = true;
       } else {
         return errorResponse('BAD_REQUEST', `Invalid serviceType ${item.serviceType}`, 400);
       }
@@ -128,6 +131,7 @@ export async function handlePostOrder(request, env, context) {
         custom_file_id: item.serviceType === 'code_tantra_files' ? documentId : null,
         copies: item.printOptions.copies,
         page_count: pages,
+        requires_page_verification: requiresPageVerification,
         paper_size: item.printOptions.paperSize || 'A4',
         print_type: item.printOptions.color ? 'color' : 'bw',
         print_side: item.printOptions.singleSided ? 'single' : 'double',
@@ -151,8 +155,14 @@ export async function handlePostOrder(request, env, context) {
       const normalizedCode = couponCode.trim().toUpperCase();
       const coupon = await env.DB.prepare(`SELECT * FROM coupons WHERE code = ?`).bind(normalizedCode).first();
       
+      const nowTime = Date.now();
+
       if (!coupon || coupon.is_active !== 1) {
         return errorResponse('BAD_REQUEST', 'Invalid or inactive coupon code', 400);
+      } else if (coupon.valid_until && coupon.valid_until < nowTime) {
+        return errorResponse('BAD_REQUEST', 'Coupon has expired', 400);
+      } else if (coupon.usage_limit && coupon.current_usage >= coupon.usage_limit) {
+        return errorResponse('BAD_REQUEST', 'Coupon usage limit reached', 400);
       } else {
         couponDiscount = coupon.discount_amount;
         appliedCoupon = normalizedCode;

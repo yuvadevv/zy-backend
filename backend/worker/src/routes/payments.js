@@ -115,6 +115,17 @@ export async function handleVerifyPayment(request, env, context) {
       return successResponse({ status: 'paid' });
     }
 
+    // FIX #1: Atomic Claim to prevent Duplicate Orders
+    const claimResult = await env.DB.prepare(`
+      UPDATE payment_attempts 
+      SET status = 'processing_verification', updated_at = ?
+      WHERE id = ? AND status = 'pending'
+    `).bind(Date.now(), attempt.id).run();
+
+    if (claimResult.meta.changes === 0) {
+      return errorResponse('CONFLICT', 'Payment verification already in progress or completed', 409);
+    }
+
     // Signature Verification
     const isDevMock = env.PAYMENT_MODE === 'mock' && env.ENVIRONMENT !== 'production';
     if (!isDevMock) {
@@ -142,6 +153,15 @@ export async function handleVerifyPayment(request, env, context) {
     let totalBlintzyGross = 0;
     const finalItems = [];
     const nowMs = Date.now();
+
+    // FIX #4: TOCTOU Coupon Validation (Option A)
+    let isAnomaly = false;
+    if (payload.couponCode) {
+      const coupon = await env.DB.prepare(`SELECT * FROM coupons WHERE code = ?`).bind(payload.couponCode.trim().toUpperCase()).first();
+      if (!coupon || coupon.is_active !== 1 || (coupon.valid_until && coupon.valid_until < nowMs) || (coupon.usage_limit && coupon.current_usage >= coupon.usage_limit)) {
+        isAnomaly = true; // Coupon expired or limit reached after checkout generation but before payment
+      }
+    }
 
     // 2. Compute Vendor Cost for Each Item
     for (const item of items) {
@@ -205,17 +225,23 @@ export async function handleVerifyPayment(request, env, context) {
         payment_gateway_fee, refunds_total, adjustments_total, blintzy_net_earning, revenue_status
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      internalOrderId, publicOrderId, studentId, 'received', 'processing',
+      internalOrderId, publicOrderId, studentId, 'received', isAnomaly ? 'anomaly' : 'processing',
       orderType, 'classroom', deliveryBuilding, deliveryRoom,
       orderTotal.platformFee, 0, orderTotal.deliveryFee, orderTotal.couponDiscount, orderTotal.grandTotal,
       etaMs, nowMs, nowMs, payload.couponCode,
       attempt.id, providerOrderId, providerPaymentId, 'paid',
       nowMs, totalVendorPayable, totalBlintzyGross,
-      0, 0, 0, totalBlintzyGross, 'unsettled'
+      // FIX #5: Accounting bug (Subtract couponDiscount from blintzy_net_earning)
+      0, 0, 0, totalBlintzyGross - (orderTotal.couponDiscount || 0), 'unsettled'
     ));
 
     for (const item of finalItems) {
       const itemId = crypto.randomUUID();
+      const calculationDetails = JSON.stringify({
+        requires_page_verification: item.requires_page_verification || false,
+        declared_pages: item.page_count
+      });
+
       stmts.push(env.DB.prepare(`
         INSERT INTO order_items (
           id, order_id, item_type, manual_id, document_id, custom_file_id, copies, page_count,
@@ -223,15 +249,15 @@ export async function handleVerifyPayment(request, env, context) {
           printing_rate, binding_rate, binding_rule_id, base_price, printing_cost, binding_cost,
           item_total, created_at,
           customer_unit_price, customer_total, vendor_unit_price, vendor_total,
-          blintzy_unit_earning, blintzy_total_earning, pricing_rule_id, pricing_rule_snapshot
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          blintzy_unit_earning, blintzy_total_earning, pricing_rule_id, pricing_rule_snapshot, calculation_details
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
         itemId, internalOrderId, item.item_type, item.manual_id, item.document_id, item.custom_file_id,
         item.copies, item.page_count, item.paper_size, item.print_type, item.color_mode, 
         item.binding_type, item.pricing_mode, item.printing_rate, item.binding_rate, item.binding_rule_id,
         item.base_price, item.printing_cost, item.binding_cost, item.item_total, nowMs,
         item.base_price, item.item_total, item.vendor_unit_price, item.vendor_total,
-        item.blintzy_unit_earning, item.blintzy_total_earning, item.pricing_rule_id, item.pricing_rule_snapshot
+        item.blintzy_unit_earning, item.blintzy_total_earning, item.pricing_rule_id, item.pricing_rule_snapshot, calculationDetails
       ));
       
       if (item.document_id) {
@@ -257,6 +283,14 @@ export async function handleVerifyPayment(request, env, context) {
       UPDATE payment_attempts SET status = 'paid', razorpay_payment_id = ?, razorpay_signature = ?, paid_at = ?, updated_at = ?
       WHERE id = ?
     `).bind(providerPaymentId, providerSignature || null, nowMs, nowMs, attempt.id));
+
+    // Increment coupon usage if a coupon was used
+    if (payload.couponCode) {
+      stmts.push(env.DB.prepare(`
+        UPDATE coupons SET current_usage = current_usage + 1
+        WHERE code = ?
+      `).bind(payload.couponCode.trim().toUpperCase()));
+    }
 
     await env.DB.batch(stmts);
 

@@ -179,7 +179,7 @@ export async function handlePublicGetStatus(request, env) {
 
 
 
-export async function handleAdminGetOrders(request, env) {
+export async function handleAdminGetOrders(request, env, context) {
   try {
     const url = new URL(request.url);
     const params = {
@@ -197,6 +197,18 @@ export async function handleAdminGetOrders(request, env) {
       sort: url.searchParams.get('sort') || 'newest',
       order_type: url.searchParams.get('order_type') || 'all'
     };
+
+    // If the caller is a representative, enforce their academic scope server-side.
+    // The scopeFilter takes precedence — frontend branch/year params are still applied 
+    // as additional filters but can never expand beyond the assigned scopes.
+    if (context?.admin?.role === 'representative') {
+      const scopes = context.admin.scopes || [];
+      if (scopes.length === 0) {
+        // Representative with no assigned scopes sees nothing
+        return successResponse({ orders: [], total: 0, page: 1, limit: 25, totalPages: 0 });
+      }
+      params.scopeFilter = scopes;
+    }
 
     const result = await getOrders(env.DB, params);
     return successResponse(result);
@@ -267,6 +279,42 @@ export async function handleAdminPatchOrderStatus(request, env, context, id) {
     
     if (!status || !currentStatus) {
       return errorResponse('BAD_REQUEST', 'Both status and currentStatus are required', 400);
+    }
+
+    // REPRESENTATIVE SECURITY CHECKS
+    if (context?.admin?.role === 'representative') {
+      // 1. Check allowed status transitions for representatives
+      const REPRESENTATIVE_ALLOWED_STATUSES = ['collected', 'delivered'];
+      if (!REPRESENTATIVE_ALLOWED_STATUSES.includes(status)) {
+        return errorResponse('FORBIDDEN', `Representatives can only set status to: ${REPRESENTATIVE_ALLOWED_STATUSES.join(', ')}`, 403);
+      }
+
+      // 2. Check the order belongs to a student within the representative's assigned scope
+      const scopes = context.admin.scopes || [];
+      if (scopes.length === 0) {
+        return errorResponse('FORBIDDEN', 'You have no assigned academic scopes', 403);
+      }
+
+      const orderStudent = await env.DB.prepare(`
+        SELECT s.study_year_id, s.branch_id, s.section
+        FROM orders o
+        JOIN students s ON o.student_id = s.id
+        WHERE o.public_id = ?
+      `).bind(id).first();
+
+      if (!orderStudent) {
+        return errorResponse('NOT_FOUND', 'Order not found', 404);
+      }
+
+      const isInScope = scopes.some(scope =>
+        scope.study_year_id === orderStudent.study_year_id &&
+        scope.branch_id === orderStudent.branch_id &&
+        scope.section === orderStudent.section
+      );
+
+      if (!isInScope) {
+        return errorResponse('FORBIDDEN', 'This order is outside your assigned academic scope', 403);
+      }
     }
 
     const result = await updateAdminOrderStatus(env.DB, id, status, currentStatus, context.admin.id);

@@ -34,7 +34,8 @@ function buildOrderDTO(o, items = [], customFiles = []) {
       yearId: o.study_year_id,
       yearLabel: o.yearLabel || 'N/A',
       semesterId: o.semester_id,
-      semesterLabel: o.semesterLabel || 'N/A'
+      semesterLabel: o.semesterLabel || 'N/A',
+      section: o.sectionName || 'N/A'
     },
     items: items,
     customFiles: customFiles,
@@ -58,7 +59,8 @@ export async function getOrders(db, params) {
   const { 
     status, search, page = 1, limit = 25, 
     branch, year, semester, manual_id, payment_status,
-    min_price, max_price, sort = 'newest', vendor_id, order_type
+    min_price, max_price, sort = 'newest', vendor_id, order_type,
+    scopeFilter  // Array of { study_year_id, branch_id, section } — enforced for representatives
   } = params;
 
   let query = `
@@ -75,6 +77,7 @@ export async function getOrders(db, params) {
       b.code as branchCode,
       ay.label as yearLabel,
       sem.label as semesterLabel,
+      sec.name as sectionName,
       (
         SELECT json_group_array(json_object(
           'manualId', oi.manual_id,
@@ -109,6 +112,7 @@ export async function getOrders(db, params) {
     LEFT JOIN branches b ON s.branch_id = b.id
     LEFT JOIN academic_years ay ON s.study_year_id = ay.id
     LEFT JOIN semesters sem ON s.semester_id = sem.id
+    LEFT JOIN sections sec ON s.section = sec.id
     WHERE o.status != 'payment_pending'
   `;
   
@@ -116,6 +120,7 @@ export async function getOrders(db, params) {
     SELECT COUNT(DISTINCT o.internal_id) as total 
     FROM orders o
     LEFT JOIN students s ON o.student_id = s.id
+    LEFT JOIN sections sec ON s.section = sec.id
   `;
   
   if (manual_id && manual_id !== 'all') {
@@ -125,6 +130,22 @@ export async function getOrders(db, params) {
 
   const qParams = [];
   
+  // SCOPE ENFORCEMENT: If scopeFilter is provided (for representatives), 
+  // restrict orders to only those whose student matches one of their assigned scope combinations.
+  // This is an OR across all assigned (year, branch, section) tuples.
+  // Frontend query params cannot override or expand this restriction.
+  if (scopeFilter && Array.isArray(scopeFilter) && scopeFilter.length > 0) {
+    const scopeClauses = scopeFilter.map(() => 
+      `(s.study_year_id = ? AND s.branch_id = ? AND s.section = ?)`
+    ).join(' OR ');
+    const scopeClause = ` AND (${scopeClauses})`;
+    query += scopeClause;
+    countQuery += scopeClause;
+    for (const scope of scopeFilter) {
+      qParams.push(scope.study_year_id, scope.branch_id, scope.section);
+    }
+  }
+
   if (vendor_id) {
     const vClause = ` AND o.vendor_id = ?`;
     query += vClause; countQuery += vClause; qParams.push(vendor_id);
@@ -247,6 +268,7 @@ export async function getOrderDetails(db, publicOrderId, vendorId = null) {
       b.code as branchCode,
       ay.label as yearLabel,
       sem.label as semesterLabel,
+      sec.name as sectionName,
       p.status as paymentStatus,
       p.provider as paymentProvider,
       p.provider_order_id as paymentProviderOrderId
@@ -255,6 +277,7 @@ export async function getOrderDetails(db, publicOrderId, vendorId = null) {
     LEFT JOIN branches b ON s.branch_id = b.id
     LEFT JOIN academic_years ay ON s.study_year_id = ay.id
     LEFT JOIN semesters sem ON s.semester_id = sem.id
+    LEFT JOIN sections sec ON s.section = sec.id
     LEFT JOIN payments p ON o.internal_id = p.order_id AND p.status = 'paid'
     WHERE o.public_id = ?
   `;

@@ -31,18 +31,25 @@ export async function handleLogin(request, env) {
 
     let email = rawIdentifier;
 
-    // If identifier doesn't have '@', or if it is a username, lookup in D1
-    if (!rawIdentifier.includes('@') || body.username) {
-      const vendor = await env.DB.prepare('SELECT email FROM vendors WHERE username = ? OR email = ?').bind(rawIdentifier, rawIdentifier).first();
+    if (rawIdentifier.includes('@')) {
+      // It's an email, strictly search by email to avoid username collisions
+      const vendor = await env.DB.prepare('SELECT email FROM vendors WHERE email = ?').bind(rawIdentifier).first();
       if (vendor && vendor.email) {
         email = vendor.email;
       } else {
-        const admin = await env.DB.prepare('SELECT email FROM admin_users WHERE name = ? OR email = ?').bind(rawIdentifier, rawIdentifier).first();
+        const admin = await env.DB.prepare('SELECT email FROM admin_users WHERE email = ?').bind(rawIdentifier).first();
         if (admin && admin.email) {
           email = admin.email;
-        } else if (!rawIdentifier.includes('@')) {
-          email = `${rawIdentifier}@vendor.blintzy.local`;
         }
+      }
+    } else {
+      // It's a username, strictly search by username
+      const vendor = await env.DB.prepare('SELECT email FROM vendors WHERE username = ?').bind(rawIdentifier).first();
+      if (vendor && vendor.email) {
+        email = vendor.email;
+      } else {
+        // Fallback for students using roll number as username, which gets mapped to a dummy email
+        email = `${rawIdentifier}@vendor.blintzy.local`;
       }
     }
 
@@ -229,18 +236,29 @@ export async function handleResetPassword(request, env) {
       return errorResponse('BAD_REQUEST', 'Email is required', 400);
     }
 
-    const ip = request.headers.get('cf-connecting-ip') || 'unknown';
+    const ip = request.headers.get('cf-connecting-ip');
     const now = Date.now();
     const cooldownPeriod = 60000; // 60 seconds
 
     // Rate limit check using audit_logs table
-    const recentRequest = await env.DB.prepare(`
-      SELECT created_at FROM audit_logs 
-      WHERE action = 'password_reset_request' 
-      AND (actor_id = ? OR after_value = ?)
-      AND created_at > ?
-      ORDER BY created_at DESC LIMIT 1
-    `).bind(email, ip, now - cooldownPeriod).first();
+    let recentRequest;
+    if (ip) {
+      recentRequest = await env.DB.prepare(`
+        SELECT created_at FROM audit_logs 
+        WHERE action = 'password_reset_request' 
+        AND (actor_id = ? OR ip_address = ?)
+        AND created_at > ?
+        ORDER BY created_at DESC LIMIT 1
+      `).bind(email, ip, now - cooldownPeriod).first();
+    } else {
+      recentRequest = await env.DB.prepare(`
+        SELECT created_at FROM audit_logs 
+        WHERE action = 'password_reset_request' 
+        AND actor_id = ?
+        AND created_at > ?
+        ORDER BY created_at DESC LIMIT 1
+      `).bind(email, now - cooldownPeriod).first();
+    }
 
     if (recentRequest) {
       return errorResponse('TOO_MANY_REQUESTS', 'Please wait 60 seconds before requesting another reset link.', 429);
@@ -248,10 +266,10 @@ export async function handleResetPassword(request, env) {
 
     // Log the request
     await env.DB.prepare(`
-      INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, before_value, after_value, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO audit_logs (id, actor_id, actor_role, action, entity_type, entity_id, before_value, after_value, ip_address, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      crypto.randomUUID(), email, 'system', 'password_reset_request', 'auth', 'recovery', null, ip, now
+      crypto.randomUUID(), email, 'system', 'password_reset_request', 'auth', 'recovery', null, null, ip || 'unknown', now
     ).run();
 
     // Trigger Supabase recovery

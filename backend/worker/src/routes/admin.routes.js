@@ -42,6 +42,11 @@ import { handleAdminGetFaqs, handleAdminPostFaq, handleAdminPatchFaq, handleAdmi
 
 import { handleAdminGetCoupons, handleAdminPostCoupon, handleAdminPatchCoupon } from './admin/coupons.js';
 import { handleAdminGetBindingRules, handleAdminPostBindingRule, handleAdminPutBindingRule, handleAdminDeleteBindingRule } from './admin/bindingPricing.js';
+import {
+  handleGetRepresentatives, handlePostRepresentative, handlePatchRepresentative,
+  handlePatchRepresentativeStatus, handleDeleteRepresentative, handleResetRepresentativePassword,
+  handleGetRepresentativeScopes, handlePostRepresentativeScope, handleDeleteRepresentativeScope
+} from './admin/representatives.js';
 
 export const adminRouter = new Router();
 
@@ -61,6 +66,19 @@ const perm = (p) => async (request, env, context) => {
 };
 
 // Dashboard & Analytics
+adminRouter.get('/me', async (req, env, ctx) => {
+  // Returns the authenticated admin's profile including role, permissions, and scopes
+  const { successResponse } = await import('../utils/response.js');
+  const adminUser = await env.DB.prepare(`SELECT id, email, name, status FROM admin_users WHERE id = ?`).bind(ctx.admin.id).first();
+  return successResponse({
+    id: ctx.admin.id,
+    email: ctx.admin.email,
+    name: adminUser?.name || ctx.admin.email,
+    role: ctx.admin.role,
+    permissions: ctx.admin.permissions,
+    scopes: ctx.admin.scopes || []
+  });
+});
 adminRouter.get('/dashboard', perm('dashboard.view'), handleAdminGetDashboard);
 adminRouter.get('/analytics', perm('analytics.view'), handleAdminGetAnalytics);
 
@@ -94,6 +112,22 @@ adminRouter.patch('/orders/:id/status', perm('orders.edit'), (req, env, ctx) => 
 adminRouter.patch('/orders/:id/vendor', perm('orders.assign'), (req, env, ctx) => handleAdminPatchOrderVendor(req, env, ctx, ctx.params.id));
 adminRouter.get('/orders/:id', perm('orders.view'), (req, env, ctx) => handleAdminGetOrder(req, env, ctx, ctx.params.id));
 adminRouter.get('/orders', perm('orders.view'), handleAdminGetOrders);
+
+// Representative-scoped order routes (representative role only)
+adminRouter.get('/representative/orders', perm('representative.orders.view'), handleAdminGetOrders);
+adminRouter.get('/representative/orders/:id', perm('representative.orders.view'), (req, env, ctx) => handleAdminGetOrder(req, env, ctx, ctx.params.id));
+adminRouter.patch('/representative/orders/:id/status', perm('representative.orders.update_status'), (req, env, ctx) => handleAdminPatchOrderStatus(req, env, ctx, ctx.params.id));
+
+// Representative management (admin only)
+adminRouter.get('/representatives', perm('representatives.manage'), handleGetRepresentatives);
+adminRouter.post('/representatives', perm('representatives.manage'), handlePostRepresentative);
+adminRouter.patch('/representatives/:id', perm('representatives.manage'), (req, env, ctx) => handlePatchRepresentative(req, env, ctx, ctx.params.id));
+adminRouter.patch('/representatives/:id/status', perm('representatives.manage'), (req, env, ctx) => handlePatchRepresentativeStatus(req, env, ctx, ctx.params.id));
+adminRouter.delete('/representatives/:id', perm('representatives.manage'), (req, env, ctx) => handleDeleteRepresentative(req, env, ctx, ctx.params.id));
+adminRouter.post('/representatives/:id/reset-password', perm('representatives.manage'), (req, env, ctx) => handleResetRepresentativePassword(req, env, ctx, ctx.params.id));
+adminRouter.get('/representatives/:id/scopes', perm('representatives.manage'), (req, env, ctx) => handleGetRepresentativeScopes(req, env, ctx, ctx.params.id));
+adminRouter.post('/representatives/:id/scopes', perm('representatives.manage'), (req, env, ctx) => handlePostRepresentativeScope(req, env, ctx, ctx.params.id));
+adminRouter.delete('/representatives/:id/scopes/:scopeId', perm('representatives.manage'), (req, env, ctx) => handleDeleteRepresentativeScope(req, env, ctx, ctx.params.id, ctx.params.scopeId));
 
 // Oversized File Requests
 adminRouter.get('/oversized-requests', perm('orders.view'), handleAdminGetOversizedRequests);

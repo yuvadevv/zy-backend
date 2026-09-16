@@ -1,6 +1,6 @@
 import { errorResponse, successResponse } from '../utils/response.js';
 import { getOrders, getOrderDetails, updateAdminOrdersBulk, updateAdminOrderStatus, getCommonManualBatches, validateImportOrders } from '../services/adminService.js';
-import { getVendorDashboardStats, getVendorDocumentAccess, getVendorDocuments, getVendorActivity, getVendorProfile, updateVendorProfile, updateVendorOrderStatus } from '../services/vendorService.js';
+import { getVendorDashboardStats, getVendorDocumentAccess, getVendorDocuments, getVendorActivity, getVendorProfile, updateVendorProfile, updateVendorOrderStatus, getVendorOrders, getVendorOrderDetails } from '../services/vendorService.js';
 
 export async function handleVendorGetOrders(request, env, context) {
   try {
@@ -19,10 +19,10 @@ export async function handleVendorGetOrders(request, env, context) {
       min_price: url.searchParams.get('min_price') || '',
       max_price: url.searchParams.get('max_price') || '',
       sort: url.searchParams.get('sort') || 'newest'
-      // No vendor_id filter: all active vendors see the global order pool
+      // Enforce vendor_id filter to isolate order access
     };
 
-    const result = await getOrders(env.DB, params);
+    const result = await getVendorOrders(env.DB, context.vendor.id, params);
     return successResponse(result);
   } catch (err) {
     console.error('Vendor Get Orders Error:', err);
@@ -32,8 +32,8 @@ export async function handleVendorGetOrders(request, env, context) {
 
 export async function handleVendorGetOrder(request, env, context, id) {
   try {
-    // Pass null as vendorId — all active vendors can view any order's details
-    const details = await getOrderDetails(env.DB, id, null);
+    // Enforce vendorId filter
+    const details = await getVendorOrderDetails(env.DB, context.vendor.id, id);
     if (!details) {
       return errorResponse('NOT_FOUND', 'Order not found', 404);
     }
@@ -62,8 +62,10 @@ export async function handleVendorBulkPatchOrders(request, env, context) {
 
     if (updates.status === 'delivered') {
       try {
+        const successfulOrderIds = result.updatedOrders || orderIds; // Depending on how adminService returns updated orders
         for (const orderId of orderIds) {
-          const internalIdResult = await env.DB.prepare('SELECT internal_id FROM orders WHERE public_id = ?').bind(orderId).first();
+          // Double check vendor ownership before deleting documents!
+          const internalIdResult = await env.DB.prepare('SELECT internal_id FROM orders WHERE public_id = ? AND vendor_id = ?').bind(orderId, context.vendor.id).first();
           if (internalIdResult) {
             const docs = await env.DB.prepare('SELECT id, r2_object_key FROM documents WHERE order_id = ? AND deleted_at IS NULL AND document_type IN (\'custom\', \'hall_ticket\')').bind(internalIdResult.internal_id).all();
             if (docs && docs.results && docs.results.length > 0) {
@@ -160,9 +162,9 @@ export async function handleVendorOrdersExport(request, env, context) {
       manual_id: url.searchParams.get('manual_id') || '',
       order_type: url.searchParams.get('order_type') || 'all',
       sort: url.searchParams.get('sort') || 'newest'
-      // Global export - no vendor_id restriction
+      // Enforce vendor isolation
     };
-    const result = await getOrders(env.DB, params);
+    const result = await getVendorOrders(env.DB, context.vendor.id, params);
     return successResponse(result);
   } catch (err) {
     console.error('Vendor Export Error:', err);

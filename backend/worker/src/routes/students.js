@@ -24,25 +24,30 @@ export async function handlePutMe(request, env, context) {
   try {
     const body = await request.json();
     
-    const requiredFields = ['name', 'roll_number', 'phone', 'college_id', 'branch_id', 'study_year_id', 'semester_id'];
-    for (const field of requiredFields) {
-      if (!body[field]) {
-        return errorResponse('BAD_REQUEST', `Missing required field: ${field}`, 400);
-      }
-    }
+    // Fetch existing student to support partial updates
+    const existing = await getStudentByUserId(env.DB, userId);
     
     const studentData = {
       id: userId,
-      name: body.name,
-      roll_number: body.roll_number,
-      phone: body.phone,
-      email: body.email,
-      college_id: body.college_id,
-      branch_id: body.branch_id,
-      study_year_id: body.study_year_id,
-      semester_id: body.semester_id,
-      section: body.section
+      name: body.name !== undefined ? body.name : existing?.name,
+      roll_number: body.roll_number !== undefined ? body.roll_number : existing?.roll_number,
+      phone: body.phone !== undefined ? body.phone : existing?.phone,
+      email: body.email !== undefined ? body.email : existing?.email,
+      college_id: body.college_id !== undefined ? body.college_id : existing?.college_id,
+      branch_id: body.branch_id !== undefined ? body.branch_id : existing?.branch_id,
+      study_year_id: body.study_year_id !== undefined ? body.study_year_id : existing?.year,
+      semester_id: body.semester_id !== undefined ? body.semester_id : existing?.semester,
+      section: body.section !== undefined ? body.section : existing?.section,
+      block_id: body.block_id !== undefined ? body.block_id : existing?.block_id,
+      classroom_id: body.classroom_id !== undefined ? body.classroom_id : existing?.classroom_id
     };
+    
+    const requiredFields = ['name', 'roll_number', 'phone', 'college_id', 'branch_id', 'study_year_id', 'semester_id'];
+    for (const field of requiredFields) {
+      if (!studentData[field]) {
+        return errorResponse('BAD_REQUEST', `Missing required field: ${field}`, 400);
+      }
+    }
     
     const student = await upsertStudent(env.DB, studentData);
     return successResponse({ student }, 200);

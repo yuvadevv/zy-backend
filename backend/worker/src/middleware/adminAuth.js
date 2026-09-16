@@ -65,7 +65,30 @@ export async function verifyAdminAuth(request, env) {
   const role = result.results[0].role;
   const permissions = result.results.map(row => row.permission).filter(Boolean);
 
-  return { context: { admin: { id: userId, email: payload.email, role, permissions } } };
+  // For representatives, load their academic scopes for server-side order filtering
+  let adminScopes = [];
+  if (role === 'representative') {
+    try {
+      const scopeResult = await env.DB.prepare(`
+        SELECT 
+          aus.id, aus.study_year_id, aus.branch_id, aus.section_id as section,
+          ay.label as year_label,
+          b.name as branch_name, b.code as branch_code,
+          sec.name as section_name
+        FROM admin_user_scopes aus
+        LEFT JOIN academic_years ay ON aus.study_year_id = ay.id
+        LEFT JOIN branches b ON aus.branch_id = b.id
+        LEFT JOIN sections sec ON aus.section_id = sec.id
+        WHERE aus.admin_id = ?
+      `).bind(userId).all();
+      adminScopes = scopeResult.results || [];
+    } catch (scopeErr) {
+      console.error('adminAuth: Failed to load representative scopes:', scopeErr?.message);
+      // Non-fatal: scopes just won't filter (handled downstream)
+    }
+  }
+
+  return { context: { admin: { id: userId, email: payload.email, role, permissions, scopes: adminScopes } } };
 }
 
 export function requirePermission(permission) {

@@ -99,16 +99,20 @@ export function calculateOrderTotal(itemSubtotals, deliveryMethod, pricingSettin
   
   const platformFee = settings.platformFeeEnabled ? settings.platformFee : 0;
   
-  let grandTotal = subtotal + deliveryFee + platformFee - couponDiscount;
+  // Cap the coupon discount so it doesn't exceed the subtotal.
+  // This prevents users from using a ₹500 coupon to get free delivery on a ₹10 order.
+  const actualCouponDiscount = Math.min(couponDiscount, subtotal);
+  
+  let grandTotal = subtotal + deliveryFee + platformFee - actualCouponDiscount;
   if (grandTotal < 0) {
-    grandTotal = 0;
+    grandTotal = 0; // Fallback safeguard
   }
   
   return {
     subtotal,
     deliveryFee,
     platformFee,
-    couponDiscount,
+    couponDiscount: actualCouponDiscount,
     grandTotal
   };
 }
