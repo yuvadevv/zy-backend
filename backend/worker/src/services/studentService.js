@@ -37,6 +37,21 @@ export async function upsertStudent(db, studentData) {
   const { id, roll_number, name, phone, email, college_id, branch_id, study_year_id, semester_id, section, block_id, classroom_id } = studentData;
   const now = Date.now();
 
+  // Auto-create classroom if a manual string is provided instead of a UUID
+  let finalClassroomId = classroom_id || null;
+  if (finalClassroomId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(finalClassroomId)) {
+    // Try to find existing classroom with this name in this block
+    const existingClassroom = await db.prepare('SELECT id FROM classrooms WHERE name = ? AND block_id = ?').bind(finalClassroomId, block_id).first();
+    if (existingClassroom) {
+      finalClassroomId = existingClassroom.id;
+    } else {
+      const newId = crypto.randomUUID();
+      await db.prepare('INSERT INTO classrooms (id, name, block_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .bind(newId, finalClassroomId, block_id, 'active', now, now).run();
+      finalClassroomId = newId;
+    }
+  }
+
   const stmt = db.prepare(`
     INSERT INTO students (id, roll_number, name, phone, email, college_id, branch_id, study_year_id, semester_id, section, block_id, classroom_id, account_status, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
@@ -55,7 +70,7 @@ export async function upsertStudent(db, studentData) {
       updated_at = excluded.updated_at
     RETURNING id, name, roll_number, phone, email, college_id, branch_id, study_year_id as year, semester_id as semester, section, block_id, classroom_id
   `).bind(
-    id, roll_number, name, phone, email || null, college_id, branch_id, study_year_id, semester_id, section || null, block_id || null, classroom_id || null, now, now
+    id, roll_number, name, phone, email || null, college_id, branch_id, study_year_id, semester_id, section || null, block_id || null, finalClassroomId, now, now
   );
 
   const result = await stmt.first();

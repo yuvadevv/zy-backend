@@ -124,6 +124,22 @@ export async function handleGenericDelete(request, env, context, entity, id) {
   if (!hasAccess) return errorResponse('FORBIDDEN', 'Insufficient permissions', 403);
 
   try {
+    // Cascade-delete child entities where it is safe and expected
+    if (entity === 'blocks') {
+      // Remove all classrooms belonging to this block first
+      await env.DB.prepare(`DELETE FROM classrooms WHERE block_id = ?`).bind(id).run();
+    } else if (entity === 'semesters') {
+      // Remove all sections belonging to this semester first
+      await env.DB.prepare(`DELETE FROM sections WHERE semester_id = ?`).bind(id).run();
+    } else if (entity === 'academic_years') {
+      // Remove all semesters (and their sections) belonging to this year
+      const { results: sems } = await env.DB.prepare(`SELECT id FROM semesters WHERE academic_year_id = ?`).bind(id).all();
+      for (const sem of sems) {
+        await env.DB.prepare(`DELETE FROM sections WHERE semester_id = ?`).bind(sem.id).run();
+      }
+      await env.DB.prepare(`DELETE FROM semesters WHERE academic_year_id = ?`).bind(id).run();
+    }
+
     await env.DB.prepare(`DELETE FROM ${entity} WHERE id = ?`).bind(id).run();
     
     await env.DB.prepare(`
@@ -135,8 +151,9 @@ export async function handleGenericDelete(request, env, context, entity, id) {
   } catch (err) {
     console.error(`Error deleting ${entity}:`, err);
     if (err.message?.includes('FOREIGN KEY constraint failed')) {
-      return errorResponse('CONFLICT', 'Cannot delete because it is being used by other records', 409);
+      return errorResponse('CONFLICT', `Cannot delete this ${entity.replace(/_/g, ' ')} because it is still being used by existing student records or orders. Please reassign those records first.`, 409);
     }
     return errorResponse('SERVER_ERROR', `Failed to delete ${entity}`, 500);
   }
 }
+
