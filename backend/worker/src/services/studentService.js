@@ -46,8 +46,8 @@ export async function upsertStudent(db, studentData) {
       finalClassroomId = existingClassroom.id;
     } else {
       const newId = crypto.randomUUID();
-      await db.prepare('INSERT INTO classrooms (id, name, block_id, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(newId, finalClassroomId, block_id, 'active', now, now).run();
+      await db.prepare('INSERT INTO classrooms (id, name, block_id, status) VALUES (?, ?, ?, ?)')
+        .bind(newId, finalClassroomId, block_id, 'active').run();
       finalClassroomId = newId;
     }
   }

@@ -25,7 +25,7 @@ const db = createRemoteD1({
 });
 
 async function run() {
-  const tables = await db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='students'").all();
+  const tables = await db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='classrooms'").all();
   console.log(tables.results[0].sql);
 }
 run();
