@@ -22,7 +22,7 @@ export async function handlePostDocument(request, env, context) {
       return errorResponse('BAD_REQUEST', 'Invalid document type', 400);
     }
 
-    let maxFileSize = 10 * 1024 * 1024; // Default 10MB
+    let maxFileSize = 100 * 1024 * 1024; // Default 100MB
     try {
       const setting = await env.DB.prepare('SELECT setting_value FROM platform_settings WHERE setting_key = ?').bind('document_upload_limit').first();
       if (setting && setting.setting_value) {
