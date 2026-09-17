@@ -75,7 +75,10 @@ export async function handlePostDocument(request, env, context) {
       return errorResponse('BAD_REQUEST', 'Missing or invalid page count', 400);
     }
 
-    const documentId = crypto.randomUUID();
+    let documentId = formData.get('documentId');
+    if (!documentId) {
+      documentId = crypto.randomUUID();
+    }
     const safeFilename = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
     const objectKey = `documents/${studentId}/${documentId}/${safeFilename}`;
 

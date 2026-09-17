@@ -40,9 +40,19 @@ export async function handleCalculatePricing(request, env, context) {
         let pricingMode = manual.pricing_mode || 'settings';
       } else if (item.serviceType === 'hall_ticket' || item.serviceType === 'custom') {
         const documentId = item.documentId || item.referenceId;
-        const doc = await env.DB.prepare('SELECT page_count FROM documents WHERE id = ?').bind(documentId).first();
-        if (!doc) return errorResponse('NOT_FOUND', `Document ${documentId} not found`, 404);
-        pages = doc.page_count;
+        if (documentId) {
+          const doc = await env.DB.prepare('SELECT page_count FROM documents WHERE id = ?').bind(documentId).first();
+          if (doc) {
+            pages = doc.page_count;
+          } else {
+            // Background upload might not be finished yet, trust the frontend payload
+            pages = item.pages || 0;
+            item.requires_page_verification = true;
+          }
+        } else {
+          pages = item.pages || 0;
+          item.requires_page_verification = true;
+        }
       } else if (item.serviceType === 'code_tantra_files') {
         const documentId = item.documentId || item.referenceId;
         if (documentId) {

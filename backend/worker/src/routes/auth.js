@@ -272,9 +272,12 @@ export async function handleResetPassword(request, env) {
       crypto.randomUUID(), email, 'system', 'password_reset_request', 'auth', 'recovery', null, null, ip || 'unknown', now
     ).run();
 
+    const origin = request.headers.get('origin') || 'http://localhost:3001';
+    const redirectTo = body.redirectTo || `${origin}/update-password`;
+
     // Trigger Supabase recovery
-    await callSupabaseAuth(env, '/auth/v1/recover', { email });
-    
+    await callSupabaseAuth(env, `/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`, { email });
+
     // Always return generic success
     return successResponse({ 
       message: 'If an account exists with this email address, a password-reset link has been sent. Please check your inbox and spam folder.'
