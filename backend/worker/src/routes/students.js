@@ -27,6 +27,11 @@ export async function handlePutMe(request, env, context) {
     // Fetch existing student to support partial updates
     const existing = await getStudentByUserId(env.DB, userId);
     
+    const parseOptional = (val, existingVal) => {
+      const v = val !== undefined ? val : existingVal;
+      return v === "" ? null : (v || null);
+    };
+
     const studentData = {
       id: userId,
       name: body.name !== undefined ? body.name : existing?.name,
@@ -37,9 +42,9 @@ export async function handlePutMe(request, env, context) {
       branch_id: body.branch_id !== undefined ? body.branch_id : existing?.branch_id,
       study_year_id: body.study_year_id !== undefined ? body.study_year_id : existing?.year,
       semester_id: body.semester_id !== undefined ? body.semester_id : existing?.semester,
-      section: body.section !== undefined ? body.section : existing?.section,
-      block_id: body.block_id !== undefined ? body.block_id : existing?.block_id,
-      classroom_id: body.classroom_id !== undefined ? body.classroom_id : existing?.classroom_id
+      section: parseOptional(body.section, existing?.section),
+      block_id: parseOptional(body.block_id, existing?.block_id),
+      classroom_id: parseOptional(body.classroom_id, existing?.classroom_id)
     };
     
     const requiredFields = ['name', 'roll_number', 'phone', 'college_id', 'branch_id', 'study_year_id', 'semester_id'];
