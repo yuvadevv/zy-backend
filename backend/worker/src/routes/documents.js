@@ -39,21 +39,35 @@ export async function handlePostDocument(request, env, context) {
       return errorResponse('BAD_REQUEST', `File exceeds ${maxFileSize / (1024 * 1024)}MB limit`, 400);
     }
 
-    if (file.type !== 'application/pdf') {
-      return errorResponse('BAD_REQUEST', 'Only PDF files are allowed', 400);
+    const isZip = file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip' || file.type === 'application/x-zip-compressed';
+    const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+
+    if (!isZip && !isPdf) {
+      return errorResponse('BAD_REQUEST', 'Only PDF or ZIP files are allowed', 400);
     }
 
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
     
-    // Check %PDF- signature
-    if (uint8Array.length < 5 || 
-        uint8Array[0] !== 0x25 || // %
-        uint8Array[1] !== 0x50 || // P
-        uint8Array[2] !== 0x44 || // D
-        uint8Array[3] !== 0x46 || // F
-        uint8Array[4] !== 0x2D) { // -
-      return errorResponse('BAD_REQUEST', 'Invalid PDF signature', 400);
+    if (isPdf) {
+      // Check %PDF- signature
+      if (uint8Array.length < 5 || 
+          uint8Array[0] !== 0x25 || // %
+          uint8Array[1] !== 0x50 || // P
+          uint8Array[2] !== 0x44 || // D
+          uint8Array[3] !== 0x46 || // F
+          uint8Array[4] !== 0x2D) { // -
+        return errorResponse('BAD_REQUEST', 'Invalid PDF signature', 400);
+      }
+    } else if (isZip) {
+      // Check PK signature
+      if (uint8Array.length < 4 ||
+          uint8Array[0] !== 0x50 || // P
+          uint8Array[1] !== 0x4B || // K
+          uint8Array[2] !== 0x03 || // \x03
+          uint8Array[3] !== 0x04) { // \x04
+        return errorResponse('BAD_REQUEST', 'Invalid ZIP signature', 400);
+      }
     }
 
     let pageCount = parseInt(formData.get('pageCount'));
@@ -69,10 +83,12 @@ export async function handlePostDocument(request, env, context) {
     // 3 days
     const expiresAt = now + (3 * 24 * 60 * 60 * 1000);
 
+    const fileContentType = isZip ? 'application/zip' : 'application/pdf';
+
     // Upload to R2
     try {
       await env.DOCUMENTS.put(objectKey, arrayBuffer, {
-        httpMetadata: { contentType: 'application/pdf' },
+        httpMetadata: { contentType: fileContentType },
         customMetadata: { studentId, documentId }
       });
     } catch (e) {
@@ -92,7 +108,7 @@ export async function handlePostDocument(request, env, context) {
         studentId,
         documentType,
         file.name,
-        'application/pdf',
+        fileContentType,
         file.size,
         pageCount,
         objectKey,

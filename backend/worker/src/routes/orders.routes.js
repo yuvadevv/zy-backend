@@ -16,4 +16,4 @@ ordersRouter.use(async (request, env, context) => {
 ordersRouter.post('/', handlePostOrder);
 ordersRouter.get('/', handleGetOrders);
 ordersRouter.post('/calculate-pricing', handleCalculatePricing);
-ordersRouter.get('/:id', (req, env, ctx) => handleGetOrder(req, env, ctx, ctx.params.id));
+ordersRouter.get('/:id', (req, env, ctx) => handleGetOrder(req, env, ctx, req.params.id));

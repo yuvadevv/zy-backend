@@ -47,16 +47,19 @@ export async function handleUploadCustomFile(request, env, context) {
       return errorResponse('SERVER_ERROR', 'Failed to upload document', 500);
     }
 
+    const pageCountStr = formData.get('pageCount');
+    const pageCount = pageCountStr ? parseInt(pageCountStr, 10) : 0;
+
     const now = Date.now();
     await env.DB.prepare(`
       INSERT INTO custom_files (
         id, order_id, service_type, original_filename, stored_filename,
-        mime_type, file_size, storage_provider, r2_bucket, r2_object_key,
+        mime_type, file_size, page_count, storage_provider, r2_bucket, r2_object_key,
         upload_status, is_temporary, is_deleted, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       fileId, orderId || null, 'code_tantra_files', file.name, safeFilename,
-      file.type || 'application/octet-stream', file.size, 'r2', bucket, objectKey,
+      file.type || 'application/octet-stream', file.size, pageCount, 'r2', bucket, objectKey,
       'UPLOADED', 1, 0, now, now
     ).run();
 

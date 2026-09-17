@@ -108,33 +108,33 @@ adminRouter.post('/orders/import/validate', perm('orders.edit'), handleAdminOrde
 adminRouter.post('/orders/import/commit', perm('orders.edit'), handleAdminOrdersImportCommit);
 adminRouter.patch('/orders/bulk', perm('orders.edit'), handleAdminBulkPatchOrders);
 adminRouter.get('/orders/batches', perm('orders.view'), handleAdminGetCommonManualBatches);
-adminRouter.patch('/orders/:id/status', perm('orders.edit'), (req, env, ctx) => handleAdminPatchOrderStatus(req, env, ctx, ctx.params.id));
-adminRouter.patch('/orders/:id/vendor', perm('orders.assign'), (req, env, ctx) => handleAdminPatchOrderVendor(req, env, ctx, ctx.params.id));
-adminRouter.get('/orders/:id', perm('orders.view'), (req, env, ctx) => handleAdminGetOrder(req, env, ctx, ctx.params.id));
+adminRouter.patch('/orders/:id/status', perm('orders.edit'), (req, env, ctx) => handleAdminPatchOrderStatus(req, env, ctx, req.params.id));
+adminRouter.patch('/orders/:id/vendor', perm('orders.assign'), (req, env, ctx) => handleAdminPatchOrderVendor(req, env, ctx, req.params.id));
+adminRouter.get('/orders/:id', perm('orders.view'), (req, env, ctx) => handleAdminGetOrder(req, env, ctx, req.params.id));
 adminRouter.get('/orders', perm('orders.view'), handleAdminGetOrders);
 
 // Representative-scoped order routes (representative role only)
 adminRouter.get('/representative/orders', perm('representative.orders.view'), handleAdminGetOrders);
-adminRouter.get('/representative/orders/:id', perm('representative.orders.view'), (req, env, ctx) => handleAdminGetOrder(req, env, ctx, ctx.params.id));
-adminRouter.patch('/representative/orders/:id/status', perm('representative.orders.update_status'), (req, env, ctx) => handleAdminPatchOrderStatus(req, env, ctx, ctx.params.id));
+adminRouter.get('/representative/orders/:id', perm('representative.orders.view'), (req, env, ctx) => handleAdminGetOrder(req, env, ctx, req.params.id));
+adminRouter.patch('/representative/orders/:id/status', perm('representative.orders.update_status'), (req, env, ctx) => handleAdminPatchOrderStatus(req, env, ctx, req.params.id));
 
 // Representative management (admin only)
 adminRouter.get('/representatives', perm('representatives.manage'), handleGetRepresentatives);
 adminRouter.post('/representatives', perm('representatives.manage'), handlePostRepresentative);
-adminRouter.patch('/representatives/:id', perm('representatives.manage'), (req, env, ctx) => handlePatchRepresentative(req, env, ctx, ctx.params.id));
-adminRouter.patch('/representatives/:id/status', perm('representatives.manage'), (req, env, ctx) => handlePatchRepresentativeStatus(req, env, ctx, ctx.params.id));
-adminRouter.delete('/representatives/:id', perm('representatives.manage'), (req, env, ctx) => handleDeleteRepresentative(req, env, ctx, ctx.params.id));
-adminRouter.post('/representatives/:id/reset-password', perm('representatives.manage'), (req, env, ctx) => handleResetRepresentativePassword(req, env, ctx, ctx.params.id));
-adminRouter.get('/representatives/:id/scopes', perm('representatives.manage'), (req, env, ctx) => handleGetRepresentativeScopes(req, env, ctx, ctx.params.id));
-adminRouter.post('/representatives/:id/scopes', perm('representatives.manage'), (req, env, ctx) => handlePostRepresentativeScope(req, env, ctx, ctx.params.id));
-adminRouter.delete('/representatives/:id/scopes/:scopeId', perm('representatives.manage'), (req, env, ctx) => handleDeleteRepresentativeScope(req, env, ctx, ctx.params.id, ctx.params.scopeId));
+adminRouter.patch('/representatives/:id', perm('representatives.manage'), (req, env, ctx) => handlePatchRepresentative(req, env, ctx, req.params.id));
+adminRouter.patch('/representatives/:id/status', perm('representatives.manage'), (req, env, ctx) => handlePatchRepresentativeStatus(req, env, ctx, req.params.id));
+adminRouter.delete('/representatives/:id', perm('representatives.manage'), (req, env, ctx) => handleDeleteRepresentative(req, env, ctx, req.params.id));
+adminRouter.post('/representatives/:id/reset-password', perm('representatives.manage'), (req, env, ctx) => handleResetRepresentativePassword(req, env, ctx, req.params.id));
+adminRouter.get('/representatives/:id/scopes', perm('representatives.manage'), (req, env, ctx) => handleGetRepresentativeScopes(req, env, ctx, req.params.id));
+adminRouter.post('/representatives/:id/scopes', perm('representatives.manage'), (req, env, ctx) => handlePostRepresentativeScope(req, env, ctx, req.params.id));
+adminRouter.delete('/representatives/:id/scopes/:scopeId', perm('representatives.manage'), (req, env, ctx) => handleDeleteRepresentativeScope(req, env, ctx, req.params.id, req.params.scopeId));
 
 // Oversized File Requests
 adminRouter.get('/oversized-requests', perm('orders.view'), handleAdminGetOversizedRequests);
-adminRouter.put('/oversized-requests/:id/status', perm('orders.edit'), (req, env, ctx) => handleAdminPatchOversizedRequestStatus(req, env, ctx, ctx.params.id));
+adminRouter.put('/oversized-requests/:id/status', perm('orders.edit'), (req, env, ctx) => handleAdminPatchOversizedRequestStatus(req, env, ctx, req.params.id));
 
 // Documents
-adminRouter.get('/documents/:id/access', perm('orders.view'), (req, env, ctx) => handleAdminGetDocumentAccess(req, env, ctx, ctx.params.id));
+adminRouter.get('/documents/:id/access', perm('orders.view'), (req, env, ctx) => handleAdminGetDocumentAccess(req, env, ctx, req.params.id));
 
 // Roles & Team
 adminRouter.get('/roles', perm('users.view'), handleGetRoles);
@@ -143,53 +143,53 @@ adminRouter.get('/team', perm('users.view'), handleGetTeam);
 adminRouter.post('/team', perm('users.edit'), handlePostTeamMember);
 
 // Users
-adminRouter.patch('/users/:id/credentials', perm('users.edit'), (req, env, ctx) => handleUpdateUserCredentials(req, env, ctx, ctx.params.id));
-adminRouter.patch('/users/:id/status', perm('users.edit'), (req, env, ctx) => handlePatchUserStatus(req, env, ctx, ctx.params.id));
-adminRouter.get('/users/:id/details', perm('users.view'), (req, env, ctx) => handleGetUserDetails(req, env, ctx, ctx.params.id));
-adminRouter.get('/users/:id', perm('users.view'), (req, env, ctx) => handleGetUserById(req, env, ctx, ctx.params.id));
+adminRouter.patch('/users/:id/credentials', perm('users.edit'), (req, env, ctx) => handleUpdateUserCredentials(req, env, ctx, req.params.id));
+adminRouter.patch('/users/:id/status', perm('users.edit'), (req, env, ctx) => handlePatchUserStatus(req, env, ctx, req.params.id));
+adminRouter.get('/users/:id/details', perm('users.view'), (req, env, ctx) => handleGetUserDetails(req, env, ctx, req.params.id));
+adminRouter.get('/users/:id', perm('users.view'), (req, env, ctx) => handleGetUserById(req, env, ctx, req.params.id));
 adminRouter.get('/users', perm('users.view'), handleGetUsers);
 
 // Academic - Subjects & Branches
 adminRouter.get('/academic/subjects', perm('catalog.view'), handleGetSubjects);
 adminRouter.post('/academic/subjects', perm('catalog.edit'), handlePostSubject);
-adminRouter.delete('/academic/subjects/:id', perm('catalog.edit'), (req, env, ctx) => handleDeleteSubject(req, env, ctx, ctx.params.id));
+adminRouter.delete('/academic/subjects/:id', perm('catalog.edit'), (req, env, ctx) => handleDeleteSubject(req, env, ctx, req.params.id));
 
 adminRouter.get('/academic/branches', perm('catalog.view'), handleGetBranches);
 adminRouter.post('/academic/branches', perm('catalog.edit'), handlePostBranch);
-adminRouter.patch('/academic/branches/:id', perm('catalog.edit'), (req, env, ctx) => handlePatchBranch(req, env, ctx, ctx.params.id));
+adminRouter.patch('/academic/branches/:id', perm('catalog.edit'), (req, env, ctx) => handlePatchBranch(req, env, ctx, req.params.id));
 
 // Academic - Generic Entities
-adminRouter.get('/academic/:entity/:id', perm('catalog.view'), (req, env, ctx) => handleGenericGet(req, env, ctx, ctx.params.entity, ctx.params.id));
-adminRouter.patch('/academic/:entity/:id', perm('catalog.edit'), (req, env, ctx) => handleGenericPatch(req, env, ctx, ctx.params.entity, ctx.params.id));
-adminRouter.delete('/academic/:entity/:id', perm('catalog.edit'), (req, env, ctx) => handleGenericDelete(req, env, ctx, ctx.params.entity, ctx.params.id));
-adminRouter.get('/academic/:entity', perm('catalog.view'), (req, env, ctx) => handleGenericGet(req, env, ctx, ctx.params.entity));
-adminRouter.post('/academic/:entity', perm('catalog.edit'), (req, env, ctx) => handleGenericPost(req, env, ctx, ctx.params.entity));
+adminRouter.get('/academic/:entity/:id', perm('catalog.view'), (req, env, ctx) => handleGenericGet(req, env, ctx, req.params.entity, req.params.id));
+adminRouter.patch('/academic/:entity/:id', perm('catalog.edit'), (req, env, ctx) => handleGenericPatch(req, env, ctx, req.params.entity, req.params.id));
+adminRouter.delete('/academic/:entity/:id', perm('catalog.edit'), (req, env, ctx) => handleGenericDelete(req, env, ctx, req.params.entity, req.params.id));
+adminRouter.get('/academic/:entity', perm('catalog.view'), (req, env, ctx) => handleGenericGet(req, env, ctx, req.params.entity));
+adminRouter.post('/academic/:entity', perm('catalog.edit'), (req, env, ctx) => handleGenericPost(req, env, ctx, req.params.entity));
 
 // Manuals
-adminRouter.get('/manuals/:id', perm('catalog.view'), (req, env, ctx) => handleAdminGetManualById(req, env, ctx, ctx.params.id));
-adminRouter.patch('/manuals/:id', perm('catalog.edit'), (req, env, ctx) => handlePatchManual(req, env, ctx, ctx.params.id));
-adminRouter.delete('/manuals/:id', perm('catalog.edit'), (req, env, ctx) => handleDeleteManual(req, env, ctx, ctx.params.id));
+adminRouter.get('/manuals/:id', perm('catalog.view'), (req, env, ctx) => handleAdminGetManualById(req, env, ctx, req.params.id));
+adminRouter.patch('/manuals/:id', perm('catalog.edit'), (req, env, ctx) => handlePatchManual(req, env, ctx, req.params.id));
+adminRouter.delete('/manuals/:id', perm('catalog.edit'), (req, env, ctx) => handleDeleteManual(req, env, ctx, req.params.id));
 adminRouter.get('/manuals', perm('catalog.view'), handleAdminGetManuals);
 adminRouter.post('/manuals', perm('catalog.edit'), handlePostManual);
 
 // FAQs
 adminRouter.get('/faqs', perm('settings.view'), handleAdminGetFaqs);
 adminRouter.post('/faqs', perm('settings.edit'), handleAdminPostFaq);
-adminRouter.patch('/faqs/:id', perm('settings.edit'), (req, env, ctx) => handleAdminPatchFaq(req, env, ctx, ctx.params.id));
-adminRouter.delete('/faqs/:id', perm('settings.edit'), (req, env, ctx) => handleAdminDeleteFaq(req, env, ctx, ctx.params.id));
+adminRouter.patch('/faqs/:id', perm('settings.edit'), (req, env, ctx) => handleAdminPatchFaq(req, env, ctx, req.params.id));
+adminRouter.delete('/faqs/:id', perm('settings.edit'), (req, env, ctx) => handleAdminDeleteFaq(req, env, ctx, req.params.id));
 
 // Coupons
 adminRouter.get('/coupons', perm('settings.view'), handleAdminGetCoupons);
 adminRouter.post('/coupons', perm('settings.edit'), handleAdminPostCoupon);
-adminRouter.patch('/coupons/:id', perm('settings.edit'), (req, env, ctx) => handleAdminPatchCoupon(req, env, ctx, ctx.params.id));
+adminRouter.patch('/coupons/:id', perm('settings.edit'), (req, env, ctx) => handleAdminPatchCoupon(req, env, ctx, req.params.id));
 
 // Settings & Pricing
 adminRouter.get('/settings/pricing', perm('settings.view'), handleGetPricingSettings);
 adminRouter.patch('/settings/pricing', perm('settings.edit'), handlePatchPricingSettings);
 adminRouter.get('/settings/pricing/binding', perm('settings.view'), handleAdminGetBindingRules);
 adminRouter.post('/settings/pricing/binding', perm('settings.edit'), handleAdminPostBindingRule);
-adminRouter.put('/settings/pricing/binding/:id', perm('settings.edit'), (req, env, ctx) => handleAdminPutBindingRule(req, env, ctx, ctx.params.id));
-adminRouter.delete('/settings/pricing/binding/:id', perm('settings.edit'), (req, env, ctx) => handleAdminDeleteBindingRule(req, env, ctx, ctx.params.id));
+adminRouter.put('/settings/pricing/binding/:id', perm('settings.edit'), (req, env, ctx) => handleAdminPutBindingRule(req, env, ctx, req.params.id));
+adminRouter.delete('/settings/pricing/binding/:id', perm('settings.edit'), (req, env, ctx) => handleAdminDeleteBindingRule(req, env, ctx, req.params.id));
 adminRouter.get('/settings', perm('settings.view'), handleGetSettings);
 adminRouter.patch('/settings', perm('settings.edit'), handlePatchSettings);
 
@@ -208,25 +208,25 @@ adminRouter.get('/payments', perm('payments.view'), handleAdminGetPayments);
 // Revenue
 adminRouter.get('/pricing/vendor-blintzy', perm('settings.view'), handleGetVendorBlintzyPricing);
 adminRouter.post('/pricing/vendor-blintzy', perm('settings.edit'), handlePostVendorBlintzyPricing);
-adminRouter.put('/pricing/vendor-blintzy/:id', perm('settings.edit'), (req, env, ctx) => handlePutVendorBlintzyPricing(req, env, ctx, ctx.params.id));
-adminRouter.delete('/pricing/vendor-blintzy/:id', perm('settings.edit'), (req, env, ctx) => handleDeleteVendorBlintzyPricing(req, env, ctx, ctx.params.id));
+adminRouter.put('/pricing/vendor-blintzy/:id', perm('settings.edit'), (req, env, ctx) => handlePutVendorBlintzyPricing(req, env, ctx, req.params.id));
+adminRouter.delete('/pricing/vendor-blintzy/:id', perm('settings.edit'), (req, env, ctx) => handleDeleteVendorBlintzyPricing(req, env, ctx, req.params.id));
 
 adminRouter.get('/earnings/summary', perm('payments.view'), handleGetEarningsSummary);
 adminRouter.get('/earnings/orders', perm('payments.view'), handleGetEarningsOrders);
-adminRouter.get('/orders/:id/revenue', perm('payments.view'), (req, env, ctx) => handleGetOrderRevenue(req, env, ctx, ctx.params.id));
+adminRouter.get('/orders/:id/revenue', perm('payments.view'), (req, env, ctx) => handleGetOrderRevenue(req, env, ctx, req.params.id));
 
 adminRouter.get('/refunds', perm('payments.view'), handleAdminGetRefunds);
 adminRouter.post('/refunds', perm('payments.edit'), handleAdminPostRefund);
-adminRouter.get('/students/:studentId/refunds', perm('users.view'), (req, env, ctx) => handleAdminGetStudentRefunds(req, env, ctx, ctx.params.studentId));
+adminRouter.get('/students/:studentId/refunds', perm('users.view'), (req, env, ctx) => handleAdminGetStudentRefunds(req, env, ctx, req.params.studentId));
 
 // Vendors
-adminRouter.patch('/vendors/:id/status', perm('vendors.edit'), (req, env, ctx) => handleAdminPatchVendorStatus(req, env, ctx, ctx.params.id));
-adminRouter.post('/vendors/:id/reset-password', perm('vendors.edit'), (req, env, ctx) => handleAdminResetVendorPassword(req, env, ctx, ctx.params.id));
-adminRouter.get('/vendors/:id/stats', perm('vendors.view'), (req, env, ctx) => handleAdminGetVendorStats(req, env, ctx.params.id));
-adminRouter.get('/vendors/:id/orders', perm('vendors.view'), (req, env, ctx) => handleAdminGetVendorOrders(req, env, ctx.params.id));
-adminRouter.get('/vendors/:id/activity', perm('vendors.view'), (req, env, ctx) => handleAdminGetVendorActivity(req, env, ctx.params.id));
-adminRouter.patch('/vendors/:id', perm('vendors.edit'), (req, env, ctx) => handleAdminPatchVendor(req, env, ctx, ctx.params.id));
-adminRouter.get('/vendors/:id', perm('vendors.view'), (req, env, ctx) => handleAdminGetVendor(req, env, ctx.params.id));
+adminRouter.patch('/vendors/:id/status', perm('vendors.edit'), (req, env, ctx) => handleAdminPatchVendorStatus(req, env, ctx, req.params.id));
+adminRouter.post('/vendors/:id/reset-password', perm('vendors.edit'), (req, env, ctx) => handleAdminResetVendorPassword(req, env, ctx, req.params.id));
+adminRouter.get('/vendors/:id/stats', perm('vendors.view'), (req, env, ctx) => handleAdminGetVendorStats(req, env, req.params.id));
+adminRouter.get('/vendors/:id/orders', perm('vendors.view'), (req, env, ctx) => handleAdminGetVendorOrders(req, env, req.params.id));
+adminRouter.get('/vendors/:id/activity', perm('vendors.view'), (req, env, ctx) => handleAdminGetVendorActivity(req, env, req.params.id));
+adminRouter.patch('/vendors/:id', perm('vendors.edit'), (req, env, ctx) => handleAdminPatchVendor(req, env, ctx, req.params.id));
+adminRouter.get('/vendors/:id', perm('vendors.view'), (req, env, ctx) => handleAdminGetVendor(req, env, req.params.id));
 adminRouter.get('/vendors', perm('vendors.view'), handleAdminGetVendors);
 adminRouter.post('/vendors', perm('vendors.edit'), handleAdminPostVendor);
 
@@ -234,7 +234,7 @@ adminRouter.post('/vendors', perm('vendors.edit'), handleAdminPostVendor);
 adminRouter.get('/audit', perm('audit.view'), handleAdminGetAuditLogs);
 adminRouter.get('/content', perm('content.view'), handleAdminGetContent);
 adminRouter.post('/content', perm('content.edit'), handleAdminPostContent);
-adminRouter.patch('/content/:id', perm('content.edit'), (req, env, ctx) => handleAdminPatchContent(req, env, ctx, ctx.params.id));
-adminRouter.delete('/content/:id', perm('content.edit'), (req, env, ctx) => handleAdminDeleteContent(req, env, ctx, ctx.params.id));
+adminRouter.patch('/content/:id', perm('content.edit'), (req, env, ctx) => handleAdminPatchContent(req, env, ctx, req.params.id));
+adminRouter.delete('/content/:id', perm('content.edit'), (req, env, ctx) => handleAdminDeleteContent(req, env, ctx, req.params.id));
 adminRouter.post('/content/upload', perm('content.upload'), handleAdminUploadContent);
-adminRouter.get('/exports/:type', (req, env, ctx) => perm(`exports.${ctx.params.type}`)(req, env, ctx).then(err => err || handleAdminGetExports(req, env, ctx.params.type)));
+adminRouter.get('/exports/:type', (req, env, ctx) => perm(`exports.${req.params.type}`)(req, env, ctx).then(err => err || handleAdminGetExports(req, env, req.params.type)));

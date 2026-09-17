@@ -45,9 +45,13 @@ export async function handleCalculatePricing(request, env, context) {
         pages = doc.page_count;
       } else if (item.serviceType === 'code_tantra_files') {
         const documentId = item.documentId || item.referenceId;
-        const cf = await env.DB.prepare('SELECT page_count FROM custom_files WHERE id = ? AND is_deleted = 0').bind(documentId).first();
-        if (!cf) return errorResponse('NOT_FOUND', `Custom file ${documentId} not found`, 404);
-        pages = cf.page_count;
+        if (documentId) {
+          const cf = await env.DB.prepare('SELECT page_count FROM custom_files WHERE id = ? AND is_deleted = 0').bind(documentId).first();
+          if (!cf) return errorResponse('NOT_FOUND', `Custom file ${documentId} not found`, 404);
+          pages = cf.page_count;
+        } else {
+          pages = item.pages || 0;
+        }
         item.requires_page_verification = true;
       }
 

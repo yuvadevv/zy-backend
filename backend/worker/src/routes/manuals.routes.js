@@ -9,8 +9,8 @@ manualsRouter.get('/', handleGetManuals);
 manualsRouter.get('/:id/file', async (request, env, context) => {
   const authRes = await verifyAuth(request, env);
   if (authRes.error) return authRes.error;
-  return handleGetManualFile(request, env, authRes.context, context.params.id);
+  return handleGetManualFile(request, env, authRes.context, request.params.id);
 });
 manualsRouter.get('/:id', async (request, env, context) => {
-  return handleGetManualById(request, env, context.params.id);
+  return handleGetManualById(request, env, request.params.id);
 });

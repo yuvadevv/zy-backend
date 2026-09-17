@@ -14,6 +14,6 @@ documentsRouter.use(async (request, env, context) => {
 });
 
 documentsRouter.post('/', handlePostDocument);
-documentsRouter.get('/stream/:id', (req, env, ctx) => handleGetDocumentStream(req, env, ctx, ctx.params.id));
-documentsRouter.get('/:id', (req, env, ctx) => handleGetDocument(req, env, ctx, ctx.params.id));
-documentsRouter.delete('/:id', (req, env, ctx) => handleDeleteDocument(req, env, ctx, ctx.params.id));
+documentsRouter.get('/stream/:id', (req, env, ctx) => handleGetDocumentStream(req, env, ctx, req.params.id));
+documentsRouter.get('/:id', (req, env, ctx) => handleGetDocument(req, env, ctx, req.params.id));
+documentsRouter.delete('/:id', (req, env, ctx) => handleDeleteDocument(req, env, ctx, req.params.id));

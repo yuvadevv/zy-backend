@@ -37,13 +37,13 @@ vendorRouter.post('/orders/import/validate', handleVendorOrdersImportValidate);
 vendorRouter.post('/orders/import/commit', handleVendorOrdersImportCommit);
 vendorRouter.patch('/orders/bulk', handleVendorBulkPatchOrders);
 vendorRouter.get('/orders/batches', handleVendorGetCommonManualBatches);
-vendorRouter.get('/orders/:id', (req, env, ctx) => handleVendorGetOrder(req, env, ctx, ctx.params.id));
-vendorRouter.patch('/orders/:id/status', (req, env, ctx) => handleVendorPatchOrderStatus(req, env, ctx, ctx.params.id));
+vendorRouter.get('/orders/:id', (req, env, ctx) => handleVendorGetOrder(req, env, ctx, req.params.id));
+vendorRouter.patch('/orders/:id/status', (req, env, ctx) => handleVendorPatchOrderStatus(req, env, ctx, req.params.id));
 vendorRouter.get('/orders', handleVendorGetOrders);
 
 // Documents & Profile & Activity
 vendorRouter.get('/documents', handleVendorGetDocuments);
-vendorRouter.get('/documents/:id/access', (req, env, ctx) => handleVendorGetDocumentAccess(req, env, ctx, ctx.params.id));
+vendorRouter.get('/documents/:id/access', (req, env, ctx) => handleVendorGetDocumentAccess(req, env, ctx, req.params.id));
 vendorRouter.get('/activity', handleVendorGetActivity);
 vendorRouter.get('/profile', handleVendorGetProfile);
 vendorRouter.patch('/profile', handleVendorPatchProfile);
