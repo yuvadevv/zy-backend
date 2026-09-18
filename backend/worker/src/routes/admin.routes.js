@@ -34,6 +34,7 @@ import { handleGetTeam, handlePostTeamMember } from './admin/team.js';
 import { 
   handleGetUsers, handleGetUserById, handlePatchUserStatus, handleGetUserDetails, handleUpdateUserCredentials
 } from './admin/users.js';
+import { handleGetAdminUsers, handlePostAdminUser, handlePatchAdminUser } from './adminUsers.js';
 import { handleGetBranches, handlePostBranch, handlePatchBranch, handleGetSubjects, handlePostSubject, handleDeleteSubject } from './admin/academic.js';
 import { handleGenericGet, handleGenericPost, handleGenericPatch, handleGenericDelete } from './admin/academic_generic.js';
 import { handleGetManuals as handleAdminGetManuals, handleAdminGetManualById, handlePostManual, handlePatchManual, handleDeleteManual } from './admin/manuals.js';
@@ -141,6 +142,11 @@ adminRouter.get('/roles', perm('users.view'), handleGetRoles);
 adminRouter.get('/permissions', perm('users.view'), handleGetPermissions);
 adminRouter.get('/team', perm('users.view'), handleGetTeam);
 adminRouter.post('/team', perm('users.edit'), handlePostTeamMember);
+
+// Sub-Admins / RBAC
+adminRouter.get('/admins', perm('admins.manage'), handleGetAdminUsers);
+adminRouter.post('/admins', perm('admins.manage'), handlePostAdminUser);
+adminRouter.patch('/admins/:id', perm('admins.manage'), (req, env, ctx) => handlePatchAdminUser(req, env, ctx, req.params.id));
 
 // Users
 adminRouter.patch('/users/:id/credentials', perm('users.edit'), (req, env, ctx) => handleUpdateUserCredentials(req, env, ctx, req.params.id));

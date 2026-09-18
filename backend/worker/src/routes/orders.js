@@ -99,11 +99,24 @@ export async function handlePostOrder(request, env, context) {
         priceOverride = manual.price_override;
       } else if (item.serviceType === 'hall_ticket' || item.serviceType === 'custom') {
         documentId = item.documentId || item.referenceId;
-        const doc = await env.DB.prepare(`SELECT * FROM documents WHERE id = ? AND deleted_at IS NULL`).bind(documentId).first();
-        if (!doc) return errorResponse('NOT_FOUND', `Document ${documentId} not found`, 404);
-        if (doc.student_id !== studentId) return errorResponse('FORBIDDEN', `Document ${documentId} does not belong to you`, 403);
-        
-        pages = doc.page_count;
+        let doc = await env.DB.prepare(`SELECT * FROM documents WHERE id = ? AND deleted_at IS NULL`).bind(documentId).first();
+        if (!doc) {
+          // Create a pending document stub so checkout can proceed seamlessly
+          await env.DB.prepare(`
+            INSERT INTO documents (
+              id, student_id, document_type, original_filename, file_type,
+              file_size, page_count, r2_object_key, scan_status, created_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).bind(
+            documentId, studentId, item.serviceType, 'pending_upload', 'application/pdf',
+            0, item.pages || 0, '', 'pending', Date.now(), Date.now() + (3 * 24 * 60 * 60 * 1000)
+          ).run();
+          
+          pages = item.pages || 0;
+        } else {
+          if (doc.student_id !== studentId) return errorResponse('FORBIDDEN', `Document ${documentId} does not belong to you`, 403);
+          pages = doc.page_count;
+        }
       } else if (item.serviceType === 'code_tantra_files') {
         documentId = item.documentId || item.referenceId;
         const cf = await env.DB.prepare(`SELECT * FROM custom_files WHERE id = ? AND is_deleted = 0`).bind(documentId).first();

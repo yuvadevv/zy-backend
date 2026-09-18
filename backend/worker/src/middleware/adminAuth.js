@@ -42,28 +42,52 @@ export async function verifyAdminAuth(request, env) {
   const userId = payload.sub;
 
   // Check if user exists in admin_users with active status and load permissions
-  let result;
+  let rawUser;
   try {
-    result = await env.DB.prepare(`
-      SELECT r.name as role, p.action as permission
-      FROM admin_users au
-      JOIN admin_user_roles aur ON au.id = aur.admin_id
-      JOIN roles r ON aur.role_id = r.id
-      LEFT JOIN role_permissions rp ON r.id = rp.role_id
-      LEFT JOIN permissions p ON rp.permission_id = p.id
-      WHERE au.id = ? AND au.status = 'active'
-    `).bind(userId).all();
+    rawUser = await env.DB.prepare(`SELECT role, permissions FROM admin_users WHERE id = ? AND status = 'active'`).bind(userId).first();
   } catch (dbErr) {
     console.error('adminAuth: DB lookup failed:', dbErr?.message || dbErr);
     return { error: errorResponse('INTERNAL_ERROR', 'Database error during auth', 500) };
   }
 
-  if (!result || !result.success || result.results.length === 0) {
+  if (!rawUser) {
     return { error: errorResponse('FORBIDDEN', 'Access denied. Admin privileges required.', 403) };
   }
 
-  const role = result.results[0].role;
-  const permissions = result.results.map(row => row.permission).filter(Boolean);
+  let role = rawUser.role;
+  let permissions = [];
+  
+  try {
+    if (rawUser.permissions) {
+      permissions = JSON.parse(rawUser.permissions);
+    }
+  } catch (e) {
+    console.error('Failed to parse direct permissions:', e);
+  }
+
+  // Also try to load from role tables if they exist (legacy compatibility)
+  try {
+    const roleResults = await env.DB.prepare(`
+      SELECT p.action as permission
+      FROM admin_user_roles aur
+      JOIN role_permissions rp ON aur.role_id = rp.role_id
+      JOIN permissions p ON rp.permission_id = p.id
+      WHERE aur.admin_id = ?
+    `).bind(userId).all();
+    
+    if (roleResults && roleResults.results) {
+      for (const row of roleResults.results) {
+        if (!permissions.includes(row.permission)) {
+          permissions.push(row.permission);
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore if tables don't exist
+  }
+
+  // If role is super_admin, they get everything by convention, but we'll enforce explicitly if needed
+
 
   // For representatives, load their academic scopes for server-side order filtering
   let adminScopes = [];
@@ -99,7 +123,14 @@ export function requirePermission(permission) {
       context = { ...context, ...authResult.context };
     }
 
-    if (!context.admin.permissions.includes(permission)) {
+    if (context.admin.role === 'super_admin') {
+      return { context };
+    }
+
+    const hasExact = context.admin.permissions.includes(permission);
+    const hasBaseSection = context.admin.permissions.some(p => permission.startsWith(`${p}.`));
+
+    if (!hasExact && !hasBaseSection) {
       return errorResponse('FORBIDDEN', `Missing required permission: ${permission}`, 403);
     }
     return { context };

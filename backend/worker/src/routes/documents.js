@@ -106,6 +106,13 @@ export async function handlePostDocument(request, env, context) {
           id, student_id, document_type, original_filename, file_type,
           file_size, page_count, r2_object_key, scan_status, created_at, expires_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET 
+          original_filename = excluded.original_filename,
+          file_type = excluded.file_type,
+          file_size = excluded.file_size,
+          page_count = excluded.page_count,
+          r2_object_key = excluded.r2_object_key,
+          scan_status = 'completed'
       `).bind(
         documentId,
         studentId,
