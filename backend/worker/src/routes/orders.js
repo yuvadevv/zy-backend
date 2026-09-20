@@ -108,8 +108,8 @@ export async function handlePostOrder(request, env, context) {
               file_size, page_count, r2_object_key, scan_status, created_at, expires_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
-            documentId, studentId, item.serviceType, 'pending_upload', 'application/pdf',
-            0, item.pages || 0, `pending_${documentId}`, 'pending', Date.now(), Date.now() + (3 * 24 * 60 * 60 * 1000)
+            documentId, studentId, item.serviceType, 'awaiting_whatsapp', 'application/pdf',
+            0, item.pages || 0, `pending_${documentId}`, 'awaiting_whatsapp', Date.now(), Date.now() + (3 * 24 * 60 * 60 * 1000)
           ).run();
           
           pages = item.pages || 0;

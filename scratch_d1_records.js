@@ -25,9 +25,11 @@ const db = createRemoteD1({
 });
 
 async function run() {
-  const c = await db.prepare("SELECT * FROM colleges LIMIT 2").all();
-  console.log("Colleges:", c.results);
-  const b = await db.prepare("SELECT * FROM branches LIMIT 2").all();
-  console.log("Branches:", b.results);
+  const c = await db.prepare("SELECT phone FROM students LIMIT 1").all();
+  console.log("Students phone numbers:", c.results);
+  
+  // also check order list response for studentPhone
+  const o = await db.prepare("SELECT * FROM orders ORDER BY created_at DESC LIMIT 1").first();
+  console.log("Order:", o);
 }
 run();
