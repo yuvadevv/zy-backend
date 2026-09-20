@@ -109,7 +109,7 @@ export async function handlePostOrder(request, env, context) {
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
             documentId, studentId, item.serviceType, 'pending_upload', 'application/pdf',
-            0, item.pages || 0, \`pending_\${documentId}\`, 'pending', Date.now(), Date.now() + (3 * 24 * 60 * 60 * 1000)
+            0, item.pages || 0, `pending_${documentId}`, 'pending', Date.now(), Date.now() + (3 * 24 * 60 * 60 * 1000)
           ).run();
           
           pages = item.pages || 0;
