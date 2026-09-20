@@ -15,7 +15,7 @@ for (const line of content.split('\n')) {
       if (!process.env[key]) process.env[key] = val;
     }
   }
-}
+}      
 
 import { createRemoteD1 } from './backend/worker/src/adapters/remoteD1.js';
 const db = createRemoteD1({
