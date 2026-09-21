@@ -146,7 +146,7 @@ export async function handlePostOrder(request, env, context) {
         page_count: pages,
         requires_page_verification: requiresPageVerification,
         paper_size: item.printOptions.paperSize || 'A4',
-        print_type: item.printOptions.color ? 'color' : 'bw',
+        print_type: item.printOptions.singleSided ? 'single' : 'double',
         print_side: item.printOptions.singleSided ? 'single' : 'double',
         color_mode: item.printOptions.color ? 1 : 0,
         binding_type: item.printOptions.bindingType || 'none',
