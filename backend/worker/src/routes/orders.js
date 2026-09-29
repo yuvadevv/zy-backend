@@ -314,19 +314,19 @@ export async function handleConfirmDocument(request, env, context) {
     const publicId = match[1];
 
     const order = await env.DB.prepare(
-      'SELECT internal_id, status, internal_status, document_submitted_at FROM orders WHERE public_id = ? AND student_id = ?'
+      'SELECT internal_id, status, internal_status FROM orders WHERE public_id = ? AND student_id = ?'
     ).bind(publicId, studentId).first();
 
     if (!order) return errorResponse('NOT_FOUND', 'Order not found', 404);
 
-    if (order.document_submitted_at || order.internal_status === 'document_submitted') {
+    if (order.internal_status === 'document_submitted') {
       return successResponse({ status: 'already_confirmed', message: 'Document submission already confirmed.' });
     }
 
     const nowMs = Date.now();
     await env.DB.prepare(
-      'UPDATE orders SET internal_status = ?, document_submitted_at = ?, updated_at = ? WHERE public_id = ? AND student_id = ?'
-    ).bind('document_submitted', nowMs, nowMs, publicId, studentId).run();
+      'UPDATE orders SET internal_status = ?, updated_at = ? WHERE public_id = ? AND student_id = ?'
+    ).bind('document_submitted', nowMs, publicId, studentId).run();
 
     return successResponse({
       status: 'confirmed',
