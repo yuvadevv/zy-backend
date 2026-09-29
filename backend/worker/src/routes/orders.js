@@ -296,3 +296,45 @@ export async function handleGetOrder(request, env, context) {
     return errorResponse('SERVER_ERROR', 'Failed to fetch order', 500);
   }
 }
+
+/**
+ * POST /api/orders/:id/confirm-document
+ * Called when the student taps "I've Sent the Document" after WhatsApp submission.
+ * Updates internal_status to 'document_submitted'. Idempotent.
+ */
+export async function handleConfirmDocument(request, env, context) {
+  try {
+    const studentId = context.user.id;
+    if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
+
+    const url = new URL(request.url);
+    const match = url.pathname.match(/^\/api\/orders\/([^/]+)\/confirm-document$/);
+    if (!match) return errorResponse('NOT_FOUND', 'Not found', 404);
+
+    const publicId = match[1];
+
+    const order = await env.DB.prepare(
+      'SELECT internal_id, status, internal_status, document_submitted_at FROM orders WHERE public_id = ? AND student_id = ?'
+    ).bind(publicId, studentId).first();
+
+    if (!order) return errorResponse('NOT_FOUND', 'Order not found', 404);
+
+    if (order.document_submitted_at || order.internal_status === 'document_submitted') {
+      return successResponse({ status: 'already_confirmed', message: 'Document submission already confirmed.' });
+    }
+
+    const nowMs = Date.now();
+    await env.DB.prepare(
+      'UPDATE orders SET internal_status = ?, document_submitted_at = ?, updated_at = ? WHERE public_id = ? AND student_id = ?'
+    ).bind('document_submitted', nowMs, nowMs, publicId, studentId).run();
+
+    return successResponse({
+      status: 'confirmed',
+      message: 'Document submission confirmed. Your order will be processed once we receive your document on WhatsApp.'
+    });
+
+  } catch (err) {
+    console.error('Confirm Document Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to confirm document submission', 500);
+  }
+}

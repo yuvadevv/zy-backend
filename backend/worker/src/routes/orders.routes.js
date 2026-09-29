@@ -1,5 +1,5 @@
 import { Router } from '../core/Router.js';
-import { handlePostOrder, handleGetOrders, handleGetOrder } from './orders.js';
+import { handlePostOrder, handleGetOrders, handleGetOrder, handleConfirmDocument } from './orders.js';
 import { handleCalculatePricing } from './pricing.js';
 import { verifyAuth } from '../middleware/auth.js';
 
@@ -17,3 +17,4 @@ ordersRouter.post('/', handlePostOrder);
 ordersRouter.get('/', handleGetOrders);
 ordersRouter.post('/calculate-pricing', handleCalculatePricing);
 ordersRouter.get('/:id', (req, env, ctx) => handleGetOrder(req, env, ctx, req.params.id));
+ordersRouter.post('/:id/confirm-document', (req, env, ctx) => handleConfirmDocument(req, env, ctx));
