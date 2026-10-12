@@ -454,6 +454,12 @@ export async function updateAdminOrdersBulk(db, publicOrderIds, updates, adminId
   if (stmts.length > 0) {
     try {
       await db.batch([...stmts, ...auditStmts]);
+      if (status === 'cancelled' || status === 'refunded') {
+        const { revertOrderReferralQualification } = await import('./referralService.js');
+        for (const o of orders) {
+          try { await revertOrderReferralQualification(db, o.internal_id); } catch (e) {}
+        }
+      }
     } catch (e) {
       console.error("Bulk update batch failed", e);
       return { error: 'Database transaction failed during bulk update', status: 500 };

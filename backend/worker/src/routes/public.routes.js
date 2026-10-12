@@ -1,6 +1,6 @@
 import { Router } from '../core/Router.js';
 import { handleHealth } from './health.js';
-import { handleGetContent, handleGetPlatformStatus, handleGetAcademicOptions, handleGetPublicPricingSettings, handleGetCodeTantraSettings, handleGetFaqs, handleGetBindingRules } from './public.js';
+import { handleGetContent, handleGetPlatformStatus, handleGetAcademicOptions, handleGetPublicPricingSettings, handleGetCodeTantraSettings, handleGetFaqs, handleGetBindingRules, handleGetPublicOffers } from './public.js';
 import { handleTestPdf } from './test-pdf.js';
 import { errorResponse } from '../utils/response.js';
 
@@ -14,6 +14,7 @@ publicRouter.get('/public/settings/pricing', handleGetPublicPricingSettings);
 publicRouter.get('/public/settings/code-tantra', handleGetCodeTantraSettings);
 publicRouter.get('/faqs', handleGetFaqs);
 publicRouter.get('/pricing/binding', handleGetBindingRules);
+publicRouter.get('/offers', handleGetPublicOffers);
 publicRouter.post('/test-pdf', handleTestPdf);
 
 // Public Media Storage Streaming from R2

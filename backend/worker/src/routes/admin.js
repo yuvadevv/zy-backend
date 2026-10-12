@@ -664,6 +664,14 @@ export async function handleAdminPostRefund(request, env, context) {
       crypto.randomUUID(), order.student_id, notifyTitle, notifyMsg, order.internal_id, internalRefundId, `refund_processed_${internalRefundId}`, Date.now()
     ).run();
     
+    // Revert referral qualification if this order was the qualifying order
+    try {
+      const { revertOrderReferralQualification } = await import('../services/referralService.js');
+      await revertOrderReferralQualification(env.DB, order.internal_id);
+    } catch (refRevErr) {
+      console.warn('Referral reversal on refund non-fatal error:', refRevErr);
+    }
+
     return successResponse({ success: true, refundId: publicRefundId, status: 'processed' });
   } catch (err) {
     console.error('Admin Post Refund Error:', err);

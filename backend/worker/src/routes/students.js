@@ -11,6 +11,15 @@ export async function handleGetMe(request, env, context) {
       return errorResponse('NOT_FOUND', 'Student profile not found', 404);
     }
     
+    // Automatically ensure student has a referral code backfilled
+    try {
+      const { getOrCreateReferralCode } = await import('../services/referralService.js');
+      const referralCode = await getOrCreateReferralCode(env.DB, userId);
+      student.referral_code = referralCode;
+    } catch (refErr) {
+      console.warn('Student referral code backfill non-fatal:', refErr);
+    }
+    
     return successResponse({ student }, 200);
   } catch (error) {
     console.error('D1 error:', error);

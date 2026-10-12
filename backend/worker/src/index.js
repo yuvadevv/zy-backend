@@ -12,6 +12,7 @@ import { vendorRouter } from './routes/vendor.routes.js';
 import { refundsRouter } from './routes/refunds.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { customFilesRouter } from './routes/custom_files.routes.js';
+import { referralsRouter } from './routes/referrals.routes.js';
 import { errorResponse } from './utils/response.js';
 
 // Initialize Root Application Router
@@ -36,6 +37,7 @@ app.use('/api/vendor', vendorRouter);
 app.use('/api/refunds', refundsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/custom-files', customFilesRouter);
+app.use('/api/referrals', referralsRouter);
 
 let isInitialized = false;
 let initPromise = null;
@@ -69,6 +71,40 @@ const ensureDefaultBanners = async (env) => {
       } catch (e) {
         console.error("Failed to initialize default banners:", e);
         initPromise = null;
+      }
+
+      try {
+        await env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS student_referral_codes (
+            student_id TEXT PRIMARY KEY,
+            referral_code TEXT UNIQUE NOT NULL,
+            created_at INTEGER NOT NULL,
+            FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+          )
+        `).run();
+        await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_student_ref_code ON student_referral_codes(referral_code)`).run();
+        await env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS referrals (
+            id TEXT PRIMARY KEY,
+            referrer_id TEXT NOT NULL,
+            referred_id TEXT UNIQUE NOT NULL,
+            referral_code TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('pending', 'qualified', 'reversed')) DEFAULT 'pending',
+            qualifying_order_id TEXT,
+            qualified_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY (referrer_id) REFERENCES students(id),
+            FOREIGN KEY (referred_id) REFERENCES students(id),
+            FOREIGN KEY (qualifying_order_id) REFERENCES orders(internal_id),
+            CHECK(referrer_id != referred_id)
+          )
+        `).run();
+        await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_referrals_referrer_status ON referrals(referrer_id, status)`).run();
+        await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_referrals_referred ON referrals(referred_id)`).run();
+        await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_referrals_qualifying_order ON referrals(qualifying_order_id)`).run();
+      } catch (err) {
+        console.error("Failed to initialize referral tables:", err);
       }
     })();
   }

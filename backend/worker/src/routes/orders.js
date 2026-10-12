@@ -1,5 +1,5 @@
 import { errorResponse, successResponse } from '../utils/response.js';
-import { calculateManualPrice, calculateOrderTotal } from '../services/pricingService.js';
+import { calculateManualPrice, calculateOrderTotal, calculateOfferDiscount } from '../services/pricingService.js';
 import { calculateEstimatedDelivery } from '../services/deliveryService.js';
 
 // Generate BLZ-[YEAR]-[BRANCH_CODE]-[SEQ]
@@ -47,16 +47,18 @@ export async function handlePostOrder(request, env, context) {
 
     const branchCode = studentData.branch_code || '00';
 
-    // 2. Fetch pricing and delivery settings
-    const settingsResult = await env.DB.prepare(`SELECT setting_key, setting_value FROM platform_settings WHERE setting_key IN ('pricing_settings', 'delivery_settings', 'delivery_calendar')`).all();
+    // 2. Fetch pricing, launch pricing, and delivery settings
+    const settingsResult = await env.DB.prepare(`SELECT setting_key, setting_value FROM platform_settings WHERE setting_key IN ('pricing_settings', 'launch_pricing_settings', 'delivery_settings', 'delivery_calendar')`).all();
     
     let pricingSettings = null;
+    let launchPricing = null;
     let deliverySettings = null;
     let deliveryCalendar = [];
 
     for (const row of settingsResult.results) {
         try {
             if (row.setting_key === 'pricing_settings') pricingSettings = JSON.parse(row.setting_value);
+            if (row.setting_key === 'launch_pricing_settings') launchPricing = JSON.parse(row.setting_value);
             if (row.setting_key === 'delivery_settings') deliverySettings = JSON.parse(row.setting_value);
             if (row.setting_key === 'delivery_calendar') deliveryCalendar = JSON.parse(row.setting_value);
         } catch(e) {}
@@ -108,7 +110,7 @@ export async function handlePostOrder(request, env, context) {
               file_size, page_count, r2_object_key, scan_status, created_at, expires_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
-            documentId, studentId, item.serviceType, 'awaiting_whatsapp', 'application/pdf',
+            documentId, studentId, item.serviceType, item.fileName || 'awaiting_whatsapp', 'application/pdf',
             0, item.pages || 0, `pending_${documentId}`, 'awaiting_whatsapp', Date.now(), Date.now() + (3 * 24 * 60 * 60 * 1000)
           ).run();
           
@@ -129,7 +131,7 @@ export async function handlePostOrder(request, env, context) {
         return errorResponse('BAD_REQUEST', `Invalid serviceType ${item.serviceType}`, 400);
       }
 
-      const pricing = calculateManualPrice(pages, item.printOptions, pricingSettings, priceOverride, bindingRules);
+      const pricing = calculateManualPrice(pages, item.printOptions, pricingSettings, priceOverride, bindingRules, launchPricing);
       
       if (pricing.bindingError) {
         return errorResponse('BAD_REQUEST', pricing.bindingError, 400);
@@ -152,23 +154,36 @@ export async function handlePostOrder(request, env, context) {
         binding_type: item.printOptions.bindingType || 'none',
         pricing_mode: pricingMode,
         printing_rate: pricing.printingRate,
+        original_printing_rate: pricing.originalPrintingRate,
         binding_rate: pricing.bindingRate,
+        original_binding_rate: pricing.originalBindingRate,
         binding_rule_id: pricing.bindingRuleId,
         base_price: pricing.unitPrice,
+        original_unit_price: pricing.originalUnitPrice,
         printing_cost: pricing.printingCost,
+        original_printing_cost: pricing.originalPrintingCost,
         binding_cost: pricing.bindingCost,
-        item_total: pricing.subtotal
+        original_binding_cost: pricing.originalBindingCost,
+        item_total: pricing.subtotal,
+        original_subtotal: pricing.originalSubtotal,
+        is_launch_active: pricing.isLaunchActive || false,
+        launch_savings: pricing.launchSavings || 0
       });
     }
 
     let couponDiscount = 0;
     let appliedCoupon = null;
+    let offerDiscount = 0;
+    let appliedOffer = null;
+    let appliedOfferId = null;
 
+    const { offerCode } = body;
+    const nowTime = Date.now();
+
+    // Mutual exclusivity check: coupon and offer cannot be combined
     if (couponCode && typeof couponCode === 'string' && couponCode.trim().length > 0) {
       const normalizedCode = couponCode.trim().toUpperCase();
       const coupon = await env.DB.prepare(`SELECT * FROM coupons WHERE code = ?`).bind(normalizedCode).first();
-      
-      const nowTime = Date.now();
 
       if (!coupon || coupon.is_active !== 1) {
         return errorResponse('BAD_REQUEST', 'Invalid or inactive coupon code', 400);
@@ -180,12 +195,38 @@ export async function handlePostOrder(request, env, context) {
         couponDiscount = coupon.discount_amount;
         appliedCoupon = normalizedCode;
       }
+    } else {
+      // Evaluate offer if no coupon
+      let offer = null;
+      if (offerCode && typeof offerCode === 'string' && offerCode.trim().length > 0 && offerCode.trim().toUpperCase() !== 'NONE') {
+        offer = await env.DB.prepare(`SELECT * FROM offers WHERE code = ? AND is_active = 1`).bind(offerCode.trim().toUpperCase()).first();
+        if (!offer) {
+          return errorResponse('BAD_REQUEST', 'Invalid or inactive offer code', 400);
+        }
+      }
+
+      if (offer) {
+        const isTimeValid = (!offer.start_time || offer.start_time <= nowTime) && (!offer.end_time || offer.end_time >= nowTime);
+        const subtotalSum = itemSubtotals.reduce((a, b) => a + b, 0);
+        const isMinOrderMet = !offer.min_order_amount || subtotalSum >= offer.min_order_amount;
+
+        if (!isTimeValid) {
+          return errorResponse('BAD_REQUEST', 'Offer has expired or is not yet active', 400);
+        } else if (!isMinOrderMet) {
+          return errorResponse('BAD_REQUEST', `Minimum order amount of ₹${offer.min_order_amount} required for offer`, 400);
+        } else {
+          offerDiscount = calculateOfferDiscount(items.map((it, idx) => ({ ...it, ...validatedItems[idx] })), offer);
+          if (offerDiscount > 0) {
+            appliedOffer = offer.code;
+            appliedOfferId = offer.id;
+          }
+        }
+      }
     }
 
     // 4. Final Calculations
-    // Note: deliveryMethod could be 'delivery' or 'pickup'
     const deliveryMethod = 'delivery'; // assume delivery for now unless passed in
-    const orderTotal = calculateOrderTotal(itemSubtotals, deliveryMethod, pricingSettings, couponDiscount);
+    const orderTotal = calculateOrderTotal(itemSubtotals, deliveryMethod, pricingSettings, couponDiscount, offerDiscount);
     
     // 5. Generate ETA
     const now = new Date();
@@ -199,6 +240,8 @@ export async function handlePostOrder(request, env, context) {
       items: validatedItems,
       deliveryDetails,
       couponCode: appliedCoupon,
+      offerCode: appliedOffer,
+      offerId: appliedOfferId,
       orderTotal,
       etaMs,
       branchCode,
@@ -328,6 +371,14 @@ export async function handleConfirmDocument(request, env, context) {
       'UPDATE orders SET internal_status = ?, updated_at = ? WHERE public_id = ? AND student_id = ?'
     ).bind('document_submitted', nowMs, publicId, studentId).run();
 
+    try {
+      await env.DB.prepare(
+        `UPDATE documents SET scan_status = 'submitted_via_whatsapp' WHERE id IN (SELECT document_id FROM order_items WHERE order_id = ? AND document_id IS NOT NULL)`
+      ).bind(order.internal_id).run();
+    } catch (docErr) {
+      console.warn('Could not update documents scan_status:', docErr);
+    }
+
     return successResponse({
       status: 'confirmed',
       message: 'Document submission confirmed. Your order will be processed once we receive your document on WhatsApp.'
@@ -338,3 +389,50 @@ export async function handleConfirmDocument(request, env, context) {
     return errorResponse('SERVER_ERROR', 'Failed to confirm document submission', 500);
   }
 }
+
+/**
+ * POST /api/orders/:id/final-confirm
+ * Called when the student taps "I've Sent All Confirmation Details ✓" after final WhatsApp order confirmation.
+ * Validates ownership, payment confirmation, and records final customer confirmation idempotently.
+ */
+export async function handleFinalOrderConfirm(request, env, context) {
+  try {
+    const studentId = context.user.id;
+    if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
+
+    const url = new URL(request.url);
+    const match = url.pathname.match(/^\/api\/orders\/([^/]+)\/final-confirm$/);
+    if (!match) return errorResponse('NOT_FOUND', 'Not found', 404);
+
+    const publicId = match[1];
+
+    const order = await env.DB.prepare(
+      'SELECT internal_id, status, payment_status, internal_status FROM orders WHERE public_id = ? AND student_id = ?'
+    ).bind(publicId, studentId).first();
+
+    if (!order) return errorResponse('NOT_FOUND', 'Order not found', 404);
+
+    if (order.payment_status !== 'paid') {
+      return errorResponse('BAD_REQUEST', 'Cannot confirm an unpaid order', 400);
+    }
+
+    if (order.internal_status === 'final_confirmed') {
+      return successResponse({ status: 'already_confirmed', message: 'Final order confirmation already recorded.' });
+    }
+
+    const nowMs = Date.now();
+    await env.DB.prepare(
+      'UPDATE orders SET internal_status = ?, updated_at = ? WHERE public_id = ? AND student_id = ?'
+    ).bind('final_confirmed', nowMs, publicId, studentId).run();
+
+    return successResponse({
+      status: 'confirmed',
+      message: 'Final order confirmation recorded successfully.'
+    });
+
+  } catch (err) {
+    console.error('Final Order Confirm Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to record final order confirmation', 500);
+  }
+}
+

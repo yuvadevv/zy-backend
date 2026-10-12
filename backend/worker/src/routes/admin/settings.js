@@ -46,6 +46,23 @@ export async function handlePatchSettings(request, env, context) {
 
     for (const update of updates) {
       const { key, value } = update;
+
+      // Validate launch_pricing_settings to reject negative rates
+      if (key === 'launch_pricing_settings' && value && typeof value === 'object') {
+        const rates = value.printRates || {};
+        for (const [k, rate] of Object.entries(rates)) {
+          if (rate !== undefined && rate !== null && rate !== '' && Number(rate) < 0) {
+            return errorResponse('BAD_REQUEST', `Launch rate for ${k} cannot be negative`, 400);
+          }
+        }
+        const bRules = value.bindingRules || [];
+        for (const rule of bRules) {
+          if (rule && rule.price !== undefined && rule.price !== null && rule.price !== '' && Number(rule.price) < 0) {
+            return errorResponse('BAD_REQUEST', `Launch binding rate cannot be negative`, 400);
+          }
+        }
+      }
+
       const strValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
 
       stmts.push(

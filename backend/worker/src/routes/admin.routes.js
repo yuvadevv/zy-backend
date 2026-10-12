@@ -42,12 +42,14 @@ import { handleGetSettings, handlePatchSettings, handleGetPricingSettings, handl
 import { handleAdminGetFaqs, handleAdminPostFaq, handleAdminPatchFaq, handleAdminDeleteFaq } from './admin/faqs.js';
 
 import { handleAdminGetCoupons, handleAdminPostCoupon, handleAdminPatchCoupon } from './admin/coupons.js';
+import { handleAdminGetOffers, handleAdminPostOffer, handleAdminPatchOffer } from './admin/offers.js';
 import { handleAdminGetBindingRules, handleAdminPostBindingRule, handleAdminPutBindingRule, handleAdminDeleteBindingRule } from './admin/bindingPricing.js';
 import {
   handleGetRepresentatives, handlePostRepresentative, handlePatchRepresentative,
   handlePatchRepresentativeStatus, handleDeleteRepresentative, handleResetRepresentativePassword,
   handleGetRepresentativeScopes, handlePostRepresentativeScope, handleDeleteRepresentativeScope
 } from './admin/representatives.js';
+import { handleAdminGetReferrals, handleAdminGetReferralStats } from './admin/referrals.js';
 
 export const adminRouter = new Router();
 
@@ -189,6 +191,11 @@ adminRouter.get('/coupons', perm('settings.view'), handleAdminGetCoupons);
 adminRouter.post('/coupons', perm('settings.edit'), handleAdminPostCoupon);
 adminRouter.patch('/coupons/:id', perm('settings.edit'), (req, env, ctx) => handleAdminPatchCoupon(req, env, ctx, req.params.id));
 
+// Offers & Campaigns
+adminRouter.get('/offers', perm('settings.view'), handleAdminGetOffers);
+adminRouter.post('/offers', perm('settings.edit'), handleAdminPostOffer);
+adminRouter.patch('/offers/:id', perm('settings.edit'), (req, env, ctx) => handleAdminPatchOffer(req, env, ctx, req.params.id));
+
 // Settings & Pricing
 adminRouter.get('/settings/pricing', perm('settings.view'), handleGetPricingSettings);
 adminRouter.patch('/settings/pricing', perm('settings.edit'), handlePatchPricingSettings);
@@ -237,6 +244,8 @@ adminRouter.get('/vendors', perm('vendors.view'), handleAdminGetVendors);
 adminRouter.post('/vendors', perm('vendors.edit'), handleAdminPostVendor);
 
 // Audit & Content & Exports
+adminRouter.get('/referrals', perm('users.view'), handleAdminGetReferrals);
+adminRouter.get('/referrals/stats', perm('analytics.view'), handleAdminGetReferralStats);
 adminRouter.get('/audit', perm('audit.view'), handleAdminGetAuditLogs);
 adminRouter.get('/content', perm('content.view'), handleAdminGetContent);
 adminRouter.post('/content', perm('content.edit'), handleAdminPostContent);

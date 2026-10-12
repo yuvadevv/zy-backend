@@ -154,12 +154,17 @@ export async function handleVerifyPayment(request, env, context) {
     const finalItems = [];
     const nowMs = Date.now();
 
-    // FIX #4: TOCTOU Coupon Validation (Option A)
+    // FIX #4: TOCTOU Coupon and Offer Validation
     let isAnomaly = false;
     if (payload.couponCode) {
       const coupon = await env.DB.prepare(`SELECT * FROM coupons WHERE code = ?`).bind(payload.couponCode.trim().toUpperCase()).first();
       if (!coupon || coupon.is_active !== 1 || (coupon.valid_until && coupon.valid_until < nowMs) || (coupon.usage_limit && coupon.current_usage >= coupon.usage_limit)) {
         isAnomaly = true; // Coupon expired or limit reached after checkout generation but before payment
+      }
+    } else if (payload.offerCode) {
+      const offer = await env.DB.prepare(`SELECT * FROM offers WHERE code = ?`).bind(payload.offerCode.trim().toUpperCase()).first();
+      if (!offer || offer.is_active !== 1 || (offer.end_time && offer.end_time < nowMs)) {
+        isAnomaly = true; // Offer expired after checkout session generation but before payment
       }
     }
 
@@ -213,6 +218,7 @@ export async function handleVerifyPayment(request, env, context) {
     const orderType = finalItems[0].item_type;
     let deliveryBuilding = payload.deliveryDetails?.building || null;
     let deliveryRoom = payload.deliveryDetails?.roomNumber || payload.deliveryDetails?.room || null;
+    const finalDiscount = orderTotal.discount || orderTotal.couponDiscount || orderTotal.offerDiscount || 0;
 
     stmts.push(env.DB.prepare(`
       INSERT INTO orders (
@@ -220,26 +226,34 @@ export async function handleVerifyPayment(request, env, context) {
         order_type, delivery_type, delivery_building, delivery_room,
         platform_fee, gst, delivery_fee, discount, grand_total,
         estimated_delivery, created_at, updated_at, coupon_code,
+        offer_code, offer_id,
         payment_attempt_id, razorpay_order_id, razorpay_payment_id, payment_status,
         payment_verified_at, vendor_payable_total, blintzy_gross_earning,
         payment_gateway_fee, refunds_total, adjustments_total, blintzy_net_earning, revenue_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       internalOrderId, publicOrderId, studentId, 'received', isAnomaly ? 'anomaly' : 'processing',
       orderType, 'classroom', deliveryBuilding, deliveryRoom,
-      orderTotal.platformFee, 0, orderTotal.deliveryFee, orderTotal.couponDiscount, orderTotal.grandTotal,
-      etaMs, nowMs, nowMs, payload.couponCode,
+      orderTotal.platformFee, 0, orderTotal.deliveryFee, finalDiscount, orderTotal.grandTotal,
+      etaMs, nowMs, nowMs, payload.couponCode || null,
+      payload.offerCode || null, payload.offerId || null,
       attempt.id, providerOrderId, providerPaymentId, 'paid',
       nowMs, totalVendorPayable, totalBlintzyGross,
-      // FIX #5: Accounting bug (Subtract couponDiscount from blintzy_net_earning)
-      0, 0, 0, totalBlintzyGross - (orderTotal.couponDiscount || 0), 'unsettled'
+      // Accounting: Subtract final discount from blintzy_net_earning
+      0, 0, 0, totalBlintzyGross - finalDiscount, 'unsettled'
     ));
 
     for (const item of finalItems) {
       const itemId = crypto.randomUUID();
       const calculationDetails = JSON.stringify({
         requires_page_verification: item.requires_page_verification || false,
-        declared_pages: item.page_count
+        declared_pages: item.page_count,
+        is_launch_active: item.is_launch_active || false,
+        original_printing_rate: item.original_printing_rate,
+        original_binding_rate: item.original_binding_rate,
+        original_printing_cost: item.original_printing_cost,
+        original_binding_cost: item.original_binding_cost,
+        launch_savings: item.launch_savings || 0
       });
 
       stmts.push(env.DB.prepare(`
@@ -293,6 +307,14 @@ export async function handleVerifyPayment(request, env, context) {
     }
 
     await env.DB.batch(stmts);
+
+    // Authoritative Referral Qualification: Process if final paid grand_total >= 1.0
+    try {
+      const { processOrderReferralQualification } = await import('../services/referralService.js');
+      await processOrderReferralQualification(env.DB, studentId, internalOrderId, orderTotal.grandTotal);
+    } catch (refErr) {
+      console.error('Referral qualification hook error (non-fatal):', refErr);
+    }
 
     return successResponse({
       status: 'paid',
@@ -412,12 +434,19 @@ export async function handlePaymentWebhook(request, env) {
           // Update status
           if (eventType === 'refund.processed' && refund.status !== 'processed') {
             await env.DB.prepare(`UPDATE refunds SET status = 'processed', processed_at = ?, updated_at = ? WHERE id = ?`).bind(Date.now(), Date.now(), refund.id).run();
-            // Create Notification
             await env.DB.prepare(`
               INSERT INTO notifications (id, student_id, type, title, message, related_order_id, related_refund_id, dedupe_key, created_at)
               VALUES (?, ?, 'refund_processed', 'Refund Completed', 'Your refund for order has been completed successfully.', ?, ?, ?, ?)
               ON CONFLICT(dedupe_key) DO NOTHING
             `).bind(crypto.randomUUID(), refund.student_id, refund.order_id, refund.id, `refund_processed_${refund.id}`, Date.now()).run();
+
+            // Revert referral qualification if this order was the qualifying order
+            try {
+              const { revertOrderReferralQualification } = await import('../services/referralService.js');
+              await revertOrderReferralQualification(env.DB, refund.order_id);
+            } catch (refRevErr) {
+              console.warn('Referral reversal on webhook refund non-fatal error:', refRevErr);
+            }
           } else if (eventType === 'refund.failed' && refund.status !== 'processed') {
             await env.DB.prepare(`UPDATE refunds SET status = 'failed', failed_at = ?, failure_reason = ?, updated_at = ? WHERE id = ?`).bind(Date.now(), 'Webhook reported failure', Date.now(), refund.id).run();
             // Create Notification

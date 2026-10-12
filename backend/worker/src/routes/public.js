@@ -38,8 +38,9 @@ export async function handleGetContent(request, env) {
         cta_label: meta.cta || meta.cta_label || '',
         cta_url: meta.url || meta.cta_url || '',
         image_key: meta.image_key || meta.image_url || '',
-        theme: meta.theme || '',
+        theme: meta.theme || meta.color || '',
         icon: meta.icon || '',
+        badge: meta.badge || '',
         priority: row.priority,
         starts_at: row.starts_at,
         expires_at: row.expires_at
@@ -179,7 +180,20 @@ export async function handleGetPublicPricingSettings(request, env) {
       }
     }
 
-    return successResponse({ settings });
+    let launchPricing = null;
+    const launchResult = await env.DB.prepare(`
+      SELECT setting_value
+      FROM platform_settings
+      WHERE setting_key = 'launch_pricing_settings'
+    `).first();
+
+    if (launchResult && launchResult.setting_value) {
+      try {
+        launchPricing = JSON.parse(launchResult.setting_value);
+      } catch (e) {}
+    }
+
+    return successResponse({ settings, launchPricing });
   } catch (err) {
     console.error('Get public pricing settings error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to fetch pricing settings', 500);
@@ -228,3 +242,21 @@ export async function handleGetBindingRules(request, env) {
     return errorResponse('INTERNAL_ERROR', 'Failed to fetch binding rules', 500);
   }
 }
+
+export async function handleGetPublicOffers(request, env) {
+  try {
+    const nowTime = Date.now();
+    const { results } = await env.DB.prepare(
+      `SELECT id, code, title, description, discount_type, discount_value, max_discount_amount, min_order_amount, eligible_services, eligible_components, badge_text, terms_text, start_time, end_time
+       FROM offers 
+       WHERE is_active = 1 AND (start_time IS NULL OR start_time <= ?) AND (end_time IS NULL OR end_time >= ?)
+       ORDER BY discount_value DESC, created_at DESC`
+    ).bind(nowTime, nowTime).all();
+
+    return successResponse({ offers: results || [] });
+  } catch (err) {
+    console.error('Error fetching public offers:', err);
+    return errorResponse('INTERNAL_ERROR', 'Failed to fetch offers', 500);
+  }
+}
+
