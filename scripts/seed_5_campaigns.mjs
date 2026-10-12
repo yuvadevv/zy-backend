@@ -41,7 +41,7 @@ async function main() {
         message: 'Celebrate campus life! Special student savings on all printing & academic notes.',
         cta_label: 'View Offers',
         cta_url: '/app/offers',
-        image_key: '/images/banners/banner_campus_fest.jpg',
+        image_key: '/images/banners/banner_campus_fest.webp',
         theme: 'orange_gradient',
         icon: 'Sparkles',
         badge: 'Campus Fest'
@@ -57,7 +57,7 @@ async function main() {
         message: 'Fast lab records, lecture notes & project manuals ready before your class.',
         cta_label: 'Order Prints',
         cta_url: '/app/services',
-        image_key: '/images/banners/banner_smart_printing.jpg',
+        image_key: '/images/banners/banner_smart_printing.webp',
         theme: 'smart_printing',
         icon: 'Compass',
         badge: 'Instant Print'
@@ -73,7 +73,7 @@ async function main() {
         message: 'Celebrate the festive rhythm! Limited-time festive campus offers on all print orders.',
         cta_label: 'Explore Festive Deals',
         cta_url: '/app/offers',
-        image_key: '/images/banners/banner_dandiya_festive.jpg',
+        image_key: '/images/banners/banner_dandiya_festive.webp',
         theme: 'amber_festive',
         icon: 'Music2',
         badge: 'Festive Special'
@@ -89,7 +89,7 @@ async function main() {
         message: 'Invite campus friends and earn free printing credits on their first order.',
         cta_label: 'Coming Soon',
         cta_url: '',
-        image_key: '/images/banners/banner_refer_earn.jpg',
+        image_key: '/images/banners/banner_refer_earn.webp',
         theme: 'cream_emerald',
         icon: 'Gift',
         badge: 'Coming Soon'
@@ -105,7 +105,7 @@ async function main() {
         message: 'Be the voice of Blintzy at your college. Applications opening soon for next term.',
         cta_label: 'Coming Soon',
         cta_url: '',
-        image_key: '/images/banners/banner_campus_ambassador.jpg',
+        image_key: '/images/banners/banner_campus_ambassador.webp',
         theme: 'royal_indigo',
         icon: 'Users',
         badge: 'Coming Soon'
