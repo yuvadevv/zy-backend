@@ -23,7 +23,7 @@ referralsRouter.get('/me', async (request, env, context) => {
   }
 
   try {
-    const origin = request.headers.get('Origin') || 'https://blintzy.in';
+    const origin = request.headers.get('Origin') || 'https://blintzy.com';
     const details = await getStudentReferralDetails(env.DB, studentId, origin);
     return successResponse(details, 200);
   } catch (err) {

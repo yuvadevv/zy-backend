@@ -64,7 +64,7 @@ export async function getOrCreateReferralCode(db, studentId) {
 /**
  * Retrieves the authenticated student's referral statistics and code.
  */
-export async function getStudentReferralDetails(db, studentId, baseUrl = 'https://blintzy.in') {
+export async function getStudentReferralDetails(db, studentId, baseUrl = 'https://blintzy.com') {
   const code = await getOrCreateReferralCode(db, studentId);
 
   // Statistics
