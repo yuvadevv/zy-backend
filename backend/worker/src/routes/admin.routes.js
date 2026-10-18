@@ -7,6 +7,7 @@ import {
   handleAdminBulkPatchOrders,
   handleAdminPatchOrderVendor,
   handleAdminGetDashboard,
+  handleAdminGetDatabaseUsage,
   handleAdminGetDocumentAccess,
   handleAdminGetCommonManualBatches,
   handleAdminOrdersExport,
@@ -83,6 +84,7 @@ adminRouter.get('/me', async (req, env, ctx) => {
   });
 });
 adminRouter.get('/dashboard', perm('dashboard.view'), handleAdminGetDashboard);
+adminRouter.get('/database-usage', perm('dashboard.view'), handleAdminGetDatabaseUsage);
 adminRouter.get('/analytics', perm('analytics.view'), handleAdminGetAnalytics);
 
 // Notifications

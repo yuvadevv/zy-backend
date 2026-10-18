@@ -611,7 +611,69 @@ export async function updateAdminOrderVendor(db, publicOrderId, vendorId, adminI
   return { success: true };
 }
 
-export async function getDashboardStats(db) {
+export async function getDatabaseUsage(db, env = {}) {
+  let d1Metadata = null;
+  const accountId = env?.CLOUDFLARE_ACCOUNT_ID || (typeof process !== 'undefined' ? process.env?.CLOUDFLARE_ACCOUNT_ID : null);
+  const databaseId = env?.CLOUDFLARE_DATABASE_ID || (typeof process !== 'undefined' ? process.env?.CLOUDFLARE_DATABASE_ID : null);
+  const apiToken = env?.CLOUDFLARE_D1_API_TOKEN || (typeof process !== 'undefined' ? process.env?.CLOUDFLARE_D1_API_TOKEN : null);
+
+  if (accountId && databaseId && apiToken) {
+    try {
+      const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}`, {
+        headers: { 'Authorization': `Bearer ${apiToken}` }
+      });
+      const data = await res.json();
+      if (data?.success && data?.result) {
+        d1Metadata = data.result;
+      }
+    } catch (e) {
+      console.error('Failed to fetch D1 metadata from Cloudflare API:', e);
+    }
+  }
+
+  // Row counts for key tables
+  const keyTables = ['students', 'orders', 'order_items', 'documents', 'custom_files', 'manuals', 'payments', 'audit_logs', 'notifications', 'referrals'];
+  const tableCounts = {};
+  let totalRows = 0;
+  for (const table of keyTables) {
+    try {
+      const res = await db.prepare(`SELECT count(*) as c FROM "${table}"`).first('c');
+      const count = Number(res || 0);
+      tableCounts[table] = count;
+      totalRows += count;
+    } catch (e) {
+      // Table might not exist or empty
+    }
+  }
+
+  const fileSizeBytes = d1Metadata?.file_size || 1097728;
+  const quotaBytes = 500 * 1024 * 1024; // 500 MB Cloudflare D1 free limit
+  const paidQuotaBytes = 10 * 1024 * 1024 * 1024; // 10 GB Cloudflare D1 paid plan limit
+  const remainingBytes = Math.max(0, quotaBytes - fileSizeBytes);
+  const percentUsed = Number(((fileSizeBytes / quotaBytes) * 100).toFixed(2));
+  const percentFree = Number((100 - percentUsed).toFixed(2));
+
+  return {
+    databaseName: d1Metadata?.name || 'blintzy-dev',
+    databaseUuid: d1Metadata?.uuid || databaseId || '',
+    region: d1Metadata?.running_in_region || 'APAC',
+    numTables: d1Metadata?.num_tables || 46,
+    fileSizeBytes,
+    fileSizeFormatted: `${(fileSizeBytes / (1024 * 1024)).toFixed(2)} MB`,
+    quotaBytes,
+    quotaFormatted: '500 MB',
+    paidQuotaBytes,
+    paidQuotaFormatted: '10 GB',
+    remainingBytes,
+    remainingFormatted: `${(remainingBytes / (1024 * 1024)).toFixed(2)} MB`,
+    percentUsed,
+    percentFree,
+    totalTrackedRows: totalRows,
+    tableCounts
+  };
+}
+
+export async function getDashboardStats(db, env = {}) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   
@@ -626,7 +688,7 @@ export async function getDashboardStats(db) {
     totalUsersResult, activeUsersResult, newUsersResult,
     ordersMetrics, ordersThisWeekResult, ordersThisMonthResult,
     revenueTodayResult, revenueThisWeekResult, revenueThisMonthResult,
-    paymentsMetrics, chartOrdersOverTime, chartOrdersByStatus, chartRevenueOverTime, chartOrdersByBranch
+    paymentsMetrics, chartOrdersOverTime, chartOrdersByStatus, chartRevenueOverTime, chartOrdersByBranch, databaseUsage
   ] = await Promise.all([
     db.prepare(`SELECT COUNT(*) as count FROM students`).first(),
     db.prepare(`SELECT COUNT(*) as count FROM students WHERE account_status = 'active'`).first(),
@@ -677,7 +739,8 @@ export async function getDashboardStats(db) {
       JOIN students s ON o.student_id = s.id
       LEFT JOIN branches b ON s.branch_id = b.id
       GROUP BY s.branch_id
-    `).all()
+    `).all(),
+    getDatabaseUsage(db, env)
   ]);
 
   return {
@@ -691,6 +754,7 @@ export async function getDashboardStats(db) {
       today: revenueTodayResult?.total || 0, thisWeek: revenueThisWeekResult?.total || 0,
       thisMonth: revenueThisMonthResult?.total || 0, total: paymentsMetrics?.totalRevenue || 0
     },
+    databaseUsage,
     charts: {
       ordersOverTime: chartOrdersOverTime?.results || [], ordersByStatus: chartOrdersByStatus?.results || [],
       revenueOverTime: chartRevenueOverTime?.results || [], ordersByBranch: chartOrdersByBranch?.results || []

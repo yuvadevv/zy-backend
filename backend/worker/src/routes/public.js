@@ -76,13 +76,17 @@ export async function handleGetPlatformStatus(request, env) {
       ? Boolean(settings.coming_soon_enabled?.enabled)
       : Boolean(settings.coming_soon_enabled);
 
+    let cleanWhatsApp = settings.support_whatsapp ? String(settings.support_whatsapp).replace(/\D/g, '') : null;
+    if (cleanWhatsApp && cleanWhatsApp.length === 11 && cleanWhatsApp.startsWith('0')) cleanWhatsApp = cleanWhatsApp.slice(1);
+    if (cleanWhatsApp && cleanWhatsApp.length === 10) cleanWhatsApp = '91' + cleanWhatsApp;
+
     const publicStatus = {
       maintenance_mode: isMaintenance,
       maintenance_message: settings.global_banner?.text || 'Platform is under maintenance. Please check back later.',
       coming_soon: isComingSoon,
       support_email: settings.support_email || 'theblintzy@gmail.com',
       support_phone: settings.support_phone || null,
-      support_whatsapp: settings.support_whatsapp || null,
+      support_whatsapp: cleanWhatsApp || '919652929243',
       social_links: settings.social_links || { twitter: '', linkedin: '', instagram: '' },
       app_version: settings.app_version || 'APP VERSION V1.0.0',
       terms_pdf_url: settings.terms_pdf_url || null,

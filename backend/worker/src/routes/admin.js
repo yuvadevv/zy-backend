@@ -2,7 +2,7 @@ import { errorResponse, successResponse } from '../utils/response.js';
 import { 
   getPayments, getVendors, getAuditLogs, getAnalytics, 
   getContent, createContent, updateContent, deleteContent, getExports, getPublicStatus, getOrders,
-  updateAdminOrderStatus, updateAdminOrdersBulk, getDashboardStats, getOrderDetails,
+  updateAdminOrderStatus, updateAdminOrdersBulk, getDashboardStats, getDatabaseUsage, getOrderDetails,
   updateAdminOrderVendor, getDocumentAccessMetadata, getCommonManualBatches, validateImportOrders
 } from '../services/adminService.js';
 import { createVendor, getVendor, updateVendor, updateVendorStatus, resetVendorPassword, getVendorStats } from '../services/vendorManagementService.js';
@@ -349,11 +349,21 @@ export async function handleAdminPatchOrderStatus(request, env, context, id) {
 
 export async function handleAdminGetDashboard(request, env) {
   try {
-    const stats = await getDashboardStats(env.DB);
+    const stats = await getDashboardStats(env.DB, env);
     return successResponse(stats);
   } catch (err) {
     console.error('Admin Get Dashboard Error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to fetch dashboard stats', 500);
+  }
+}
+
+export async function handleAdminGetDatabaseUsage(request, env) {
+  try {
+    const usage = await getDatabaseUsage(env.DB, env);
+    return successResponse(usage);
+  } catch (err) {
+    console.error('Admin Get Database Usage Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to fetch database usage metrics', 500);
   }
 }
 
