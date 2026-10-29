@@ -306,11 +306,15 @@ export async function handleGetOrder(request, env, context) {
              b.name as branch_name,
              s.study_year_id as study_year,
              s.section,
-             c.name as college
+             c.name as college,
+             cl.name as classroom_name,
+             bl.name as block_name
       FROM orders o
       LEFT JOIN students s ON o.student_id = s.id
       LEFT JOIN branches b ON s.branch_id = b.id
       LEFT JOIN colleges c ON s.college_id = c.id
+      LEFT JOIN classrooms cl ON o.delivery_room = cl.id
+      LEFT JOIN blocks bl ON cl.block_id = bl.id
       WHERE o.public_id = ? AND o.student_id = ?
     `).bind(publicId, studentId).first();
 

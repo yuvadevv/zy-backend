@@ -37,7 +37,9 @@ export async function handleCreatePayment(request, env, context) {
     const provider = new PaymentProvider(env);
     const config = await provider.getGatewaySettings();
 
-    if (!config.enabled) {
+    const isDevMock = env.PAYMENT_MODE === 'mock' && env.ENVIRONMENT !== 'production';
+
+    if (!config.enabled && !isDevMock) {
       return errorResponse('FORBIDDEN', 'Payment gateway is currently disabled', 403);
     }
 
@@ -47,7 +49,7 @@ export async function handleCreatePayment(request, env, context) {
           providerOrderId: attempt.razorpay_order_id,
           amount: attempt.calculated_amount,
           currency: attempt.currency,
-          keyId: env.RAZORPAY_KEY_ID
+          keyId: isDevMock ? 'mock_key' : env.RAZORPAY_KEY_ID
         });
     }
 
@@ -55,7 +57,6 @@ export async function handleCreatePayment(request, env, context) {
     let paymentCurrency = 'INR';
 
     // 4. Development Mock Mode Fallback Check
-    const isDevMock = env.PAYMENT_MODE === 'mock' && env.ENVIRONMENT !== 'production';
 
     if (isDevMock) {
       providerOrderId = `mock_order_${attempt.id.substring(0, 10)}_${Date.now()}`;
