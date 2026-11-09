@@ -412,12 +412,58 @@ export async function handlePaymentWebhook(request, env) {
             WHERE order_id = ? AND is_deleted = 0
           `).bind(Date.now(), payment.order_id).run();
         }
+
+        // Reconcile Food Order if applicable
+        const foodOrder = await env.DB.prepare(`
+          SELECT id, order_status, payment_status 
+          FROM food_orders 
+          WHERE razorpay_order_id = ?
+        `).bind(orderId).first();
+
+        if (foodOrder && foodOrder.payment_status !== 'paid') {
+          const now = Date.now();
+          await env.DB.prepare(`
+            UPDATE food_orders 
+            SET payment_status = 'paid',
+                order_status = 'confirmed',
+                razorpay_payment_id = ?,
+                updated_at = ?
+            WHERE id = ?
+          `).bind(paymentEntity.id, now, foodOrder.id).run();
+
+          const fshId = `fsh_${crypto.randomUUID().replace(/-/g, '')}`;
+          await env.DB.prepare(`
+            INSERT INTO food_order_status_history (id, order_id, from_status, to_status, actor_type, actor_id, reason, created_at)
+            VALUES (?, ?, ?, 'confirmed', 'webhook', 'razorpay', 'Payment captured via Razorpay webhook', ?)
+          `).bind(fshId, foodOrder.id, foodOrder.order_status, now).run();
+        }
       } else if (eventType === 'payment.failed') {
         const paymentEntity = event.payload.payment.entity;
         const orderId = paymentEntity.order_id;
         const payment = await env.DB.prepare(`SELECT * FROM payments WHERE provider_order_id = ?`).bind(orderId).first();
         if (payment && payment.status === 'pending') {
           await env.DB.prepare(`UPDATE payments SET status = 'failed', updated_at = ? WHERE id = ?`).bind(Date.now(), payment.id).run();
+        }
+
+        const foodOrder = await env.DB.prepare(`
+          SELECT id, order_status, payment_status 
+          FROM food_orders 
+          WHERE razorpay_order_id = ?
+        `).bind(orderId).first();
+
+        if (foodOrder && foodOrder.payment_status === 'pending') {
+          const now = Date.now();
+          await env.DB.prepare(`
+            UPDATE food_orders 
+            SET payment_status = 'failed', updated_at = ? 
+            WHERE id = ?
+          `).bind(now, foodOrder.id).run();
+
+          const fshId = `fsh_${crypto.randomUUID().replace(/-/g, '')}`;
+          await env.DB.prepare(`
+            INSERT INTO food_order_status_history (id, order_id, from_status, to_status, actor_type, actor_id, reason, created_at)
+            VALUES (?, ?, ?, ?, 'webhook', 'razorpay', 'Payment failed via Razorpay webhook', ?)
+          `).bind(fshId, foodOrder.id, foodOrder.order_status, foodOrder.order_status, now).run();
         }
       } else if (eventType === 'refund.created' || eventType === 'refund.processed' || eventType === 'refund.failed') {
         const refundEntity = event.payload.refund.entity;

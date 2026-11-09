@@ -11,24 +11,44 @@ export function createRemoteD1({
 } = {}) {
   const endpoint = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
 
-  async function executeQuery(sql, params = []) {
+  async function executeQuery(sql, params = [], retries = 2) {
     console.log(`[D1_QUERY] ${sql} | Params: ${JSON.stringify(params)}`);
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiToken}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ sql, params })
-    });
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ sql, params })
+        });
 
-    const data = await res.json();
-    if (!res.ok || !data.success) {
-      const errMsg = data.errors?.[0]?.message || `D1 query failed with status ${res.status}`;
-      throw new Error(`D1_ERROR: ${errMsg}`);
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          const errMsg = data.errors?.[0]?.message || `D1 query failed with status ${res.status}`;
+          throw new Error(`D1_ERROR: ${errMsg}`);
+        }
+
+        return data.result?.[0] || { results: [], success: true, meta: {} };
+      } catch (err) {
+        const isNetworkErr = err.code === 'ECONNRESET' || 
+                             err.cause?.code === 'ECONNRESET' || 
+                             err.message?.includes('ECONNRESET') ||
+                             err.code === 'ETIMEDOUT' ||
+                             err.name === 'FetchError' ||
+                             err.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' ||
+                             err.cause?.name === 'ConnectTimeoutError' ||
+                             err.message?.includes('fetch failed') ||
+                             err.message?.includes('Timeout');
+        if (attempt < retries && isNetworkErr) {
+          console.warn(`[D1_RETRY] Retrying D1 query after network error (${attempt + 1}/${retries}): ${err.message}`);
+          await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
     }
-
-    return data.result?.[0] || { results: [], success: true, meta: {} };
   }
 
   class PreparedStatement {

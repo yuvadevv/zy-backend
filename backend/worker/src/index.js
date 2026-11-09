@@ -13,6 +13,8 @@ import { refundsRouter } from './routes/refunds.routes.js';
 import { notificationsRouter } from './routes/notifications.routes.js';
 import { customFilesRouter } from './routes/custom_files.routes.js';
 import { referralsRouter } from './routes/referrals.routes.js';
+import { foodRouter } from './routes/food.routes.js';
+import { ensureFoodTables } from './routes/food.js';
 import { errorResponse } from './utils/response.js';
 
 // Initialize Root Application Router
@@ -38,6 +40,7 @@ app.use('/api/refunds', refundsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/custom-files', customFilesRouter);
 app.use('/api/referrals', referralsRouter);
+app.use('/api/food', foodRouter);
 
 let isInitialized = false;
 let initPromise = null;
@@ -105,6 +108,12 @@ const ensureDefaultBanners = async (env) => {
         await env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_referrals_qualifying_order ON referrals(qualifying_order_id)`).run();
       } catch (err) {
         console.error("Failed to initialize referral tables:", err);
+      }
+
+      try {
+        await ensureFoodTables(env.DB);
+      } catch (err) {
+        console.error("Failed to initialize food tables:", err);
       }
     })();
   }

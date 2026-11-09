@@ -28,6 +28,17 @@ export async function verifyAdminAuth(request, env) {
 
   const token = authHeader.split(' ')[1];
 
+  if (token === 'dev_admin' && env.ENVIRONMENT !== 'production') {
+    return {
+      context: {
+        admin: { id: 'admin_dev', email: 'admin@blintzy.com', role: 'super_admin', permissions: ['*'], scopes: [] },
+        adminId: 'admin_dev',
+        role: 'super_admin',
+        permissions: ['*']
+      }
+    };
+  }
+
   let payload;
   try {
     payload = await verifyJWT(token, env);

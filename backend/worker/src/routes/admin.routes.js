@@ -51,6 +51,26 @@ import {
   handleGetRepresentativeScopes, handlePostRepresentativeScope, handleDeleteRepresentativeScope
 } from './admin/representatives.js';
 import { handleAdminGetReferrals, handleAdminGetReferralStats } from './admin/referrals.js';
+import {
+  handleAdminGetFoodOverview,
+  handleAdminGetFoodVendors,
+  handleAdminGetFoodVendorById,
+  handleAdminPatchFoodVendorStatus,
+  handleAdminGetFoodOrders,
+  handleAdminGetFoodOrderById,
+  handleAdminCancelFoodOrder,
+  handleAdminPatchFoodOrderStatus,
+  handleAdminGetFoodReconciliation,
+  handleAdminPostFoodSettlement,
+  handleAdminGetFoodAnalytics,
+  handleAdminGetFoodInventory,
+  handleAdminGetFoodInventoryLogs,
+  handleAdminAdjustFoodInventory,
+  handleAdminGetFoodAuditLogs,
+  handleAdminGetVendorApplications,
+  handleAdminApproveVendor,
+  handleAdminRejectVendor
+} from './admin/food.js';
 
 export const adminRouter = new Router();
 
@@ -255,3 +275,31 @@ adminRouter.patch('/content/:id', perm('content.edit'), (req, env, ctx) => handl
 adminRouter.delete('/content/:id', perm('content.edit'), (req, env, ctx) => handleAdminDeleteContent(req, env, ctx, req.params.id));
 adminRouter.post('/content/upload', perm('content.upload'), handleAdminUploadContent);
 adminRouter.get('/exports/:type', (req, env, ctx) => perm(`exports.${req.params.type}`)(req, env, ctx).then(err => err || handleAdminGetExports(req, env, req.params.type)));
+
+// ==========================================
+// CENTRAL BLINTZY FOOD ADMINISTRATION
+// ==========================================
+adminRouter.get('/food/overview', handleAdminGetFoodOverview);
+adminRouter.get('/food/vendors', handleAdminGetFoodVendors);
+adminRouter.get('/food/vendors/applications', handleAdminGetVendorApplications);
+adminRouter.get('/food/vendors/:id', (req, env, ctx) => handleAdminGetFoodVendorById(req, env, ctx, req.params.id));
+adminRouter.patch('/food/vendors/:id/status', (req, env, ctx) => handleAdminPatchFoodVendorStatus(req, env, ctx, req.params.id));
+adminRouter.post('/food/vendors/:id/approve', (req, env, ctx) => handleAdminApproveVendor(req, env, ctx, req.params.id));
+adminRouter.post('/food/vendors/:id/reject', (req, env, ctx) => handleAdminRejectVendor(req, env, ctx, req.params.id));
+
+adminRouter.get('/food/orders', handleAdminGetFoodOrders);
+adminRouter.get('/food/orders/:id', (req, env, ctx) => handleAdminGetFoodOrderById(req, env, ctx, req.params.id));
+adminRouter.patch('/food/orders/:id/cancel', (req, env, ctx) => handleAdminCancelFoodOrder(req, env, ctx, req.params.id));
+adminRouter.patch('/food/orders/:id/status', (req, env, ctx) => handleAdminPatchFoodOrderStatus(req, env, ctx, req.params.id));
+
+adminRouter.get('/food/reconciliation', handleAdminGetFoodReconciliation);
+adminRouter.post('/food/reconciliation/settle', handleAdminPostFoodSettlement);
+
+adminRouter.get('/food/analytics', handleAdminGetFoodAnalytics);
+
+adminRouter.get('/food/inventory', handleAdminGetFoodInventory);
+adminRouter.get('/food/inventory/logs', handleAdminGetFoodInventoryLogs);
+adminRouter.post('/food/inventory/adjust', handleAdminAdjustFoodInventory);
+
+adminRouter.get('/food/audit-logs', handleAdminGetFoodAuditLogs);
+
