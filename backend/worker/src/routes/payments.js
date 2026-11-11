@@ -413,9 +413,36 @@ export async function handlePaymentWebhook(request, env) {
           `).bind(Date.now(), payment.order_id).run();
         }
 
-        // Reconcile Food Order if applicable
+        // Reconcile Food Checkouts & Child Orders if applicable
+        const foodCheckout = await env.DB.prepare(`
+          SELECT id, payment_status FROM food_checkouts WHERE razorpay_order_id = ?
+        `).bind(orderId).first();
+
+        if (foodCheckout && foodCheckout.payment_status !== 'paid') {
+          const now = Date.now();
+          await env.DB.prepare(`
+            UPDATE food_checkouts SET payment_status = 'paid', razorpay_payment_id = ?, updated_at = ? WHERE id = ?
+          `).bind(paymentEntity.id, now, foodCheckout.id).run();
+
+          await env.DB.prepare(`
+            UPDATE food_orders 
+            SET payment_status = 'paid', order_status = 'confirmed', razorpay_payment_id = ?, updated_at = ?
+            WHERE checkout_id = ?
+          `).bind(paymentEntity.id, now, foodCheckout.id).run();
+
+          const linkedFoodOrders = await env.DB.prepare(`SELECT id, order_status FROM food_orders WHERE checkout_id = ?`).bind(foodCheckout.id).all();
+          for (const ford of linkedFoodOrders.results || []) {
+            const fshId = `fsh_${crypto.randomUUID().replace(/-/g, '')}`;
+            await env.DB.prepare(`
+              INSERT INTO food_order_status_history (id, order_id, from_status, to_status, actor_type, actor_id, reason, created_at)
+              VALUES (?, ?, ?, 'confirmed', 'webhook', 'razorpay', 'Payment captured via Razorpay webhook', ?)
+            `).bind(fshId, ford.id, ford.order_status, now).run();
+          }
+        }
+
+        // Direct Food Order reconciliation fallback
         const foodOrder = await env.DB.prepare(`
-          SELECT id, order_status, payment_status 
+          SELECT id, order_status, payment_status, checkout_id
           FROM food_orders 
           WHERE razorpay_order_id = ?
         `).bind(orderId).first();
@@ -430,6 +457,12 @@ export async function handlePaymentWebhook(request, env) {
                 updated_at = ?
             WHERE id = ?
           `).bind(paymentEntity.id, now, foodOrder.id).run();
+
+          if (foodOrder.checkout_id) {
+            await env.DB.prepare(`
+              UPDATE food_checkouts SET payment_status = 'paid', razorpay_payment_id = ?, updated_at = ? WHERE id = ?
+            `).bind(paymentEntity.id, now, foodOrder.checkout_id).run();
+          }
 
           const fshId = `fsh_${crypto.randomUUID().replace(/-/g, '')}`;
           await env.DB.prepare(`

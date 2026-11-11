@@ -41,7 +41,9 @@ import {
   handleVendorBulkCreateMenu,
   handleVendorBulkUpdateAvailability,
   handleVendorImportMenuCSV,
-  handleVendorExportMenuCSV
+  handleVendorExportMenuCSV,
+  handleGetFoodCheckoutById,
+  handleReportFoodOrderIssue
 } from './food.js';
 import { verifyAuth } from '../middleware/auth.js';
 import { verifyVendorAuth } from '../middleware/vendorAuth.js';
@@ -185,6 +187,10 @@ foodRouter.post('/orders/:id/verify-pickup', (req, env, ctx) => handleVerifyFood
 
 // 3. Student authenticated order actions
 foodRouter.post('/orders/create', requireStudentAuth, handleCreateFoodOrder);
+foodRouter.post('/orders', requireStudentAuth, handleCreateFoodOrder); // Alias for RESTful POST /orders
+foodRouter.post('/order/create', requireStudentAuth, handleCreateFoodOrder); // Alias for singular route
 foodRouter.post('/orders/verify-payment', requireStudentAuth, handleVerifyFoodPayment);
 foodRouter.get('/orders', requireStudentAuth, handleGetFoodOrders);
 foodRouter.get('/orders/:id', requireStudentAuth, (req, env, ctx) => handleGetStudentFoodOrderById(req, env, ctx, req.params.id));
+foodRouter.get('/checkouts/:id', requireStudentAuth, (req, env, ctx) => handleGetFoodCheckoutById(req, env, ctx, req.params.id));
+foodRouter.post('/orders/:id/issue', requireStudentAuth, (req, env, ctx) => handleReportFoodOrderIssue(req, env, ctx, req.params.id));

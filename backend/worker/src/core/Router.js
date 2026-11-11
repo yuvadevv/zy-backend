@@ -116,7 +116,7 @@ export class Router {
 
   async handle(request, env, context = {}) {
     const url = new URL(request.url);
-    const pathname = url.pathname;
+    const pathname = (url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname) || '/';
     const method = request.method.toUpperCase();
 
     // Prepare context

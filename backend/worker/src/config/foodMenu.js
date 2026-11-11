@@ -466,6 +466,140 @@ export async function validateAndPriceFoodOrder(dbOrItems, rawItemsOrVendorId, r
   };
 }
 
+/**
+ * Validates and prices items grouped by vendor for unified multi-counter checkout sessions.
+ * Allows items from multiple counters in the cart while segregating them into distinct vendor groups.
+ */
+export async function validateAndPriceFoodMultiOrder(dbOrItems, rawItemsOrNothing) {
+  let db = null;
+  let rawItems = [];
+
+  if (dbOrItems && typeof dbOrItems.prepare === 'function') {
+    db = dbOrItems;
+    rawItems = rawItemsOrNothing || [];
+  } else {
+    rawItems = dbOrItems || [];
+  }
+
+  if (!rawItems || !Array.isArray(rawItems) || rawItems.length === 0) {
+    return { success: false, error: 'Order must contain at least one item.' };
+  }
+
+  const vendorGroupsMap = new Map();
+  let checkoutSubtotal = 0;
+
+  for (const item of rawItems) {
+    const productId = item.productId || item.id;
+    const quantity = parseInt(item.quantity, 10);
+
+    if (!productId) {
+      return { success: false, error: 'Each order item must specify a valid productId.' };
+    }
+
+    if (isNaN(quantity) || quantity < 1 || quantity > 20) {
+      return { success: false, error: `Invalid quantity for item ${productId}. Must be between 1 and 20.` };
+    }
+
+    let catalogueProduct = null;
+
+    if (db) {
+      try {
+        const row = await db.prepare(`
+          SELECT m.*, v.name as vendor_name, v.counter_location, v.status as vendor_status
+          FROM food_menu_items m
+          LEFT JOIN food_vendors v ON m.vendor_id = v.id
+          WHERE m.id = ?
+        `).bind(productId).first();
+
+        if (row) {
+          catalogueProduct = {
+            id: row.id,
+            name: row.name,
+            categoryId: row.category_id,
+            dietary: row.dietary,
+            price: row.price,
+            stock: row.stock,
+            isAvailable: row.is_available === 1 && (row.vendor_status === 'active' || !row.vendor_status),
+            vendorId: row.vendor_id,
+            vendorName: row.vendor_name || (row.vendor_id === FOOD_VENDORS.COLLEGE_MESS.id ? FOOD_VENDORS.COLLEGE_MESS.name : FOOD_VENDORS.CANTEEN_STALL.name),
+            counterLocation: row.counter_location || (row.vendor_id === FOOD_VENDORS.COLLEGE_MESS.id ? FOOD_VENDORS.COLLEGE_MESS.counterLocation : FOOD_VENDORS.CANTEEN_STALL.counterLocation)
+          };
+        }
+      } catch (err) {
+        console.error('Error fetching menu item from DB in multi-order:', err);
+      }
+    }
+
+    if (!catalogueProduct) {
+      catalogueProduct = AUTHORITATIVE_FOOD_MENU.find((p) => p.id === productId);
+    }
+
+    if (!catalogueProduct) {
+      return { success: false, error: `Food product "${productId}" not found in campus menu.` };
+    }
+
+    if (!catalogueProduct.isAvailable) {
+      return { success: false, error: `Item "${catalogueProduct.name}" is currently sold out.` };
+    }
+
+    if (catalogueProduct.stock !== undefined && catalogueProduct.stock < quantity) {
+      return { success: false, error: `Item "${catalogueProduct.name}" has only ${catalogueProduct.stock} portions remaining.` };
+    }
+
+    const itemTotal = catalogueProduct.price * quantity;
+    checkoutSubtotal += itemTotal;
+
+    const validatedItem = {
+      productId: catalogueProduct.id,
+      name: catalogueProduct.name,
+      categoryId: catalogueProduct.categoryId,
+      dietary: catalogueProduct.dietary,
+      vendorId: catalogueProduct.vendorId,
+      vendorName: catalogueProduct.vendorName,
+      counterLocation: catalogueProduct.counterLocation,
+      unitPrice: catalogueProduct.price,
+      quantity,
+      itemTotal,
+      cookingNotes: item.cookingNotes || item.specialInstructions ? String(item.cookingNotes || item.specialInstructions).slice(0, 150).trim() : null,
+    };
+
+    const vId = catalogueProduct.vendorId;
+    if (!vendorGroupsMap.has(vId)) {
+      const vendorObj = Object.values(FOOD_VENDORS).find((v) => v.id === vId) || {
+        id: vId,
+        name: catalogueProduct.vendorName,
+        counterLocation: catalogueProduct.counterLocation,
+      };
+
+      vendorGroupsMap.set(vId, {
+        vendorId: vId,
+        vendorName: vendorObj.name,
+        counterLocation: vendorObj.counterLocation,
+        items: [],
+        subtotal: 0,
+        grandTotal: 0,
+      });
+    }
+
+    const group = vendorGroupsMap.get(vId);
+    group.items.push(validatedItem);
+    group.subtotal += itemTotal;
+    group.grandTotal += itemTotal;
+  }
+
+  const vendorGroups = Array.from(vendorGroupsMap.values());
+
+  return {
+    success: true,
+    vendorGroups,
+    checkoutSubtotal,
+    checkoutGrandTotal: checkoutSubtotal,
+    deliveryFee: 0,
+    platformFee: 0,
+    tax: 0,
+  };
+}
+
 export const ITEM_IMAGE_MAP = {
   food_bf_01: {
     image: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&w=600&q=80',

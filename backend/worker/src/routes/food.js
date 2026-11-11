@@ -1,10 +1,72 @@
 import { errorResponse, successResponse } from '../utils/response.js';
-import { validateAndPriceFoodOrder, FOOD_VENDORS, seedInitialMenuItems, getFoodImageFallback, ITEM_IMAGE_MAP } from '../config/foodMenu.js';
+import { 
+  validateAndPriceFoodOrder, 
+  validateAndPriceFoodMultiOrder,
+  FOOD_VENDORS, 
+  seedInitialMenuItems, 
+  getFoodImageFallback, 
+  ITEM_IMAGE_MAP 
+} from '../config/foodMenu.js';
+import { getStudentByUserId } from '../services/studentService.js';
 import { PaymentProvider } from '../services/paymentProvider.js';
 
 let foodTablesInitialized = false;
 
 export async function ensureFoodTables(db) {
+  try {
+    // 10. Ensure food_checkouts table exists (Unified Multi-Counter Sessions)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS food_checkouts (
+        id TEXT PRIMARY KEY,
+        checkout_number TEXT UNIQUE NOT NULL,
+        student_id TEXT NOT NULL,
+        student_name TEXT,
+        student_phone TEXT,
+        payment_method TEXT NOT NULL,
+        payment_status TEXT NOT NULL,
+        subtotal REAL NOT NULL,
+        grand_total REAL NOT NULL,
+        idempotency_key TEXT UNIQUE,
+        razorpay_order_id TEXT,
+        razorpay_payment_id TEXT,
+        order_count INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `).run();
+
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_student ON food_checkouts(student_id)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_number ON food_checkouts(checkout_number)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_idemp ON food_checkouts(idempotency_key)`).run();
+
+    // 11. Ensure food_order_issues exists (Student Help & Support)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS food_order_issues (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        order_number TEXT,
+        student_id TEXT NOT NULL,
+        issue_type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        resolution_notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_issues_order ON food_order_issues(order_id)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_issues_student ON food_order_issues(student_id)`).run();
+
+    // Migration columns for multi-counter orders
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN checkout_id TEXT").run(); } catch {}
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN checkout_number TEXT").run(); } catch {}
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN cancelled_reason TEXT").run(); } catch {}
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN cancelled_at INTEGER").run(); } catch {}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_food_orders_checkout ON food_orders(checkout_id)").run(); } catch {}
+  } catch (schemaErr) {
+    console.error('Error ensuring food checkout schema:', schemaErr);
+  }
+
   if (foodTablesInitialized) return;
   try {
     const probe = await db.prepare("SELECT COUNT(*) as count FROM food_menu_items").first();
@@ -53,6 +115,38 @@ export async function ensureFoodTables(db) {
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_orders_qr ON food_orders(pickup_qr_secret)`).run();
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_orders_otp ON food_orders(pickup_otp)`).run();
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_orders_idemp ON food_orders(idempotency_key)`).run();
+
+    // 1b. Food Parent Checkouts Table (Unified Multi-Counter Sessions)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS food_checkouts (
+        id TEXT PRIMARY KEY,
+        checkout_number TEXT UNIQUE NOT NULL,
+        student_id TEXT NOT NULL,
+        student_name TEXT,
+        student_phone TEXT,
+        payment_method TEXT NOT NULL,
+        payment_status TEXT NOT NULL,
+        subtotal REAL NOT NULL,
+        grand_total REAL NOT NULL,
+        idempotency_key TEXT UNIQUE,
+        razorpay_order_id TEXT,
+        razorpay_payment_id TEXT,
+        order_count INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `).run();
+
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_student ON food_checkouts(student_id)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_number ON food_checkouts(checkout_number)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_idemp ON food_checkouts(idempotency_key)`).run();
+
+    // Migration columns for multi-counter orders
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN checkout_id TEXT").run(); } catch {}
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN checkout_number TEXT").run(); } catch {}
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN cancelled_reason TEXT").run(); } catch {}
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN cancelled_at INTEGER").run(); } catch {}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_food_orders_checkout ON food_orders(checkout_id)").run(); } catch {}
 
     // 2. Food Order Items Table
     await db.prepare(`
@@ -251,6 +345,56 @@ export async function ensureFoodTables(db) {
     `).run();
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_status_history_order ON food_order_status_history(order_id)`).run();
 
+    // 10. Food Parent Checkouts Table (Unified Multi-Counter Sessions)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS food_checkouts (
+        id TEXT PRIMARY KEY,
+        checkout_number TEXT UNIQUE NOT NULL,
+        student_id TEXT NOT NULL,
+        student_name TEXT,
+        student_phone TEXT,
+        payment_method TEXT NOT NULL,
+        payment_status TEXT NOT NULL,
+        subtotal REAL NOT NULL,
+        grand_total REAL NOT NULL,
+        idempotency_key TEXT UNIQUE,
+        razorpay_order_id TEXT,
+        razorpay_payment_id TEXT,
+        order_count INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `).run();
+
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_student ON food_checkouts(student_id)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_number ON food_checkouts(checkout_number)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_idemp ON food_checkouts(idempotency_key)`).run();
+
+    // 11. Food Order Issues Table (Student Help & Support)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS food_order_issues (
+        id TEXT PRIMARY KEY,
+        order_id TEXT NOT NULL,
+        order_number TEXT,
+        student_id TEXT NOT NULL,
+        issue_type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        resolution_notes TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_issues_order ON food_order_issues(order_id)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_issues_student ON food_order_issues(student_id)`).run();
+
+    // Migration columns for multi-counter orders
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN checkout_id TEXT").run(); } catch {}
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN checkout_number TEXT").run(); } catch {}
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN cancelled_reason TEXT").run(); } catch {}
+    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN cancelled_at INTEGER").run(); } catch {}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_food_orders_checkout ON food_orders(checkout_id)").run(); } catch {}
+
     // Seed initial menu items if table is empty
     await seedInitialMenuItems(db);
 
@@ -273,6 +417,27 @@ function resolveVendorId(request, url, body = null, context = null) {
     return FOOD_VENDORS.CANTEEN_STALL.id;
   }
   return vendorId;
+}
+
+// Generate formatted Food Checkout Number e.g. BLZ-CHK-26-1001
+async function generateFoodCheckoutNumber(db) {
+  const yearStr = new Date().getFullYear().toString().slice(-2);
+  const prefix = `BLZ-CHK-${yearStr}`;
+
+  try {
+    const seqResult = await db.prepare(`
+      INSERT INTO sequences (prefix_key, last_sequence)
+      VALUES (?, 1001)
+      ON CONFLICT(prefix_key) DO UPDATE SET last_sequence = last_sequence + 1
+      RETURNING last_sequence
+    `).bind(prefix).first();
+
+    const seqNum = seqResult?.last_sequence || Math.floor(1001 + Math.random() * 8999);
+    return `${prefix}-${seqNum.toString().padStart(4, '0')}`;
+  } catch (e) {
+    const rand = Math.floor(1001 + Math.random() * 8999);
+    return `${prefix}-${rand}`;
+  }
 }
 
 // Generate formatted Food Order Number e.g. BLZ-FD-26-001
@@ -519,12 +684,16 @@ export async function handlePreviewFoodOrder(request, env, context) {
     const body = await request.json();
     const { items, vendorId } = body;
 
-    const validation = await validateAndPriceFoodOrder(env.DB, items, vendorId);
+    const validation = await validateAndPriceFoodMultiOrder(env.DB, items);
     if (!validation.success) {
       return errorResponse('BAD_REQUEST', validation.error, 400);
     }
 
-    return successResponse(validation);
+    return successResponse({
+      ...validation,
+      subtotal: validation.checkoutSubtotal,
+      grandTotal: validation.checkoutGrandTotal,
+    });
   } catch (err) {
     console.error('Food Order Preview Error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to calculate food order pricing', 500);
@@ -532,7 +701,7 @@ export async function handlePreviewFoodOrder(request, env, context) {
 }
 
 /**
- * 2. Secure Order Creation
+ * 2. Secure Order Creation (Unified Checkout + Separate Vendor Child Orders)
  * POST /api/food/orders/create
  */
 export async function handleCreateFoodOrder(request, env, context) {
@@ -544,68 +713,66 @@ export async function handleCreateFoodOrder(request, env, context) {
     const body = await request.json();
     const { 
       items, 
-      vendorId, 
       paymentMethod, 
       idempotencyKey,
-      studentName,
-      studentPhone
     } = body;
 
     if (!paymentMethod || !['ONLINE_UPI', 'CASH_AT_COUNTER'].includes(paymentMethod)) {
       return errorResponse('BAD_REQUEST', 'Invalid payment method. Must be ONLINE_UPI or CASH_AT_COUNTER.', 400);
     }
 
-    // 1. Idempotency Check (Prevent duplicate orders and double charges)
-    if (idempotencyKey && typeof idempotencyKey === 'string' && idempotencyKey.trim().length > 0) {
-      const existingOrder = await env.DB.prepare(`
-        SELECT * FROM food_orders WHERE idempotency_key = ? AND student_id = ?
-      `).bind(idempotencyKey.trim(), studentId).first();
+    // 1. Authoritative Student Details strictly read-only from database
+    const dbStudent = await getStudentByUserId(env.DB, studentId);
+    const verifiedStudentName = dbStudent?.name || context.user.name || 'Student';
+    const verifiedStudentPhone = dbStudent?.phone || '';
 
-      if (existingOrder) {
-        const existingItems = await env.DB.prepare(`
-          SELECT * FROM food_order_items WHERE order_id = ?
-        `).bind(existingOrder.id).all();
+    // 2. Idempotency Check (Parent Checkouts & Child Orders)
+    if (idempotencyKey && typeof idempotencyKey === 'string' && idempotencyKey.trim().length > 0) {
+      const cleanKey = idempotencyKey.trim();
+      const existingCheckout = await env.DB.prepare(`
+        SELECT * FROM food_checkouts WHERE idempotency_key = ? AND student_id = ?
+      `).bind(cleanKey, studentId).first();
+
+      if (existingCheckout) {
+        const childOrders = await env.DB.prepare(`
+          SELECT * FROM food_orders WHERE checkout_id = ? ORDER BY created_at ASC
+        `).bind(existingCheckout.id).all();
+
+        const ordersWithItems = [];
+        for (const ord of childOrders.results || []) {
+          const itms = await env.DB.prepare(`SELECT * FROM food_order_items WHERE order_id = ?`).bind(ord.id).all();
+          ordersWithItems.push({ ...ord, items: itms.results || [] });
+        }
 
         return successResponse({
-          order: {
-            ...existingOrder,
-            items: existingItems.results || [],
-          },
+          checkout: existingCheckout,
+          order: ordersWithItems[0] || null,
+          orders: ordersWithItems,
           isDuplicate: true,
           message: 'Order already exists for this idempotency session.',
         });
       }
     }
 
-    // 2. Validate items & Recalculate prices strictly on server using D1
-    const validation = await validateAndPriceFoodOrder(env.DB, items, vendorId);
+    // 3. Multi-Counter Pricing & Validation
+    const validation = await validateAndPriceFoodMultiOrder(env.DB, items);
     if (!validation.success) {
       return errorResponse('BAD_REQUEST', validation.error, 400);
     }
 
-    const { 
-      vendorId: finalVendorId, 
-      vendorName, 
-      counterLocation, 
-      items: validatedItems, 
-      subtotal, 
-      grandTotal 
-    } = validation;
-
+    const { vendorGroups, checkoutSubtotal, checkoutGrandTotal } = validation;
     const now = Date.now();
-    const internalOrderId = `fo_${crypto.randomUUID().replace(/-/g, '')}`;
-    const publicOrderNumber = await generateFoodOrderNumber(env.DB);
-    const tokenNumber = await generateCounterToken(env.DB);
 
-    const pickupOtp = Math.floor(1000 + Math.random() * 9000).toString();
-    const pickupQrSecret = `pkr_${crypto.randomUUID().replace(/-/g, '')}`;
+    // 4. Create Parent Checkout Identity
+    const internalCheckoutId = `chk_${crypto.randomUUID().replace(/-/g, '')}`;
+    const publicCheckoutNumber = await generateFoodCheckoutNumber(env.DB);
 
     let razorpayOrderId = null;
     let paymentData = null;
     let initialPaymentStatus = 'pending';
     let initialOrderStatus = 'confirmed';
 
-    // 3. Online Payment Gateway Integration
+    // 5. Online Payment Gateway Integration (Single combined transaction for parent checkout)
     if (paymentMethod === 'ONLINE_UPI') {
       initialPaymentStatus = 'pending';
       initialOrderStatus = 'payment_pending';
@@ -614,21 +781,21 @@ export async function handleCreateFoodOrder(request, env, context) {
       const isDevMock = env.PAYMENT_MODE === 'mock' && env.ENVIRONMENT !== 'production';
 
       if (isDevMock) {
-        razorpayOrderId = `mock_food_order_${internalOrderId.slice(3, 13)}_${Date.now()}`;
+        razorpayOrderId = `mock_food_order_${internalCheckoutId.slice(4, 14)}_${Date.now()}`;
         paymentData = {
           providerOrderId: razorpayOrderId,
-          amount: grandTotal,
+          amount: checkoutGrandTotal,
           currency: 'INR',
           keyId: 'mock_key',
         };
       } else {
-        const receiptId = `fdr_${internalOrderId.slice(3, 13)}`;
+        const receiptId = `chk_${internalCheckoutId.slice(4, 14)}`;
         try {
-          const gwOrder = await provider.createOrder(grandTotal, 'INR', receiptId);
+          const gwOrder = await provider.createOrder(checkoutGrandTotal, 'INR', receiptId);
           razorpayOrderId = gwOrder.id;
           paymentData = {
             providerOrderId: gwOrder.id,
-            amount: grandTotal,
+            amount: checkoutGrandTotal,
             currency: 'INR',
             keyId: env.RAZORPAY_KEY_ID,
           };
@@ -642,25 +809,27 @@ export async function handleCreateFoodOrder(request, env, context) {
       initialOrderStatus = 'confirmed';
     }
 
-    // 4. Atomic Stock Reservation (Concurrency & Overselling Prevention)
-    // Atomically decrement stock ONLY IF stock >= quantity to guarantee single winner in simultaneous orders
+    // 6. Concurrency & Stock Reservation across all vendor groups
     const reservedItems = [];
     let outOfStockItem = null;
 
-    for (const item of validatedItems) {
-      const updateResult = await env.DB.prepare(`
-        UPDATE food_menu_items 
-        SET stock = stock - ?,
-            is_available = CASE WHEN (stock - ?) <= 0 THEN 0 ELSE is_available END,
-            updated_at = ?
-        WHERE id = ? AND stock >= ? AND is_available = 1
-      `).bind(item.quantity, item.quantity, now, item.productId, item.quantity).run();
+    for (const group of vendorGroups) {
+      for (const item of group.items) {
+        const updateResult = await env.DB.prepare(`
+          UPDATE food_menu_items 
+          SET stock = stock - ?,
+              is_available = CASE WHEN (stock - ?) <= 0 THEN 0 ELSE is_available END,
+              updated_at = ?
+          WHERE id = ? AND stock >= ? AND is_available = 1
+        `).bind(item.quantity, item.quantity, now, item.productId, item.quantity).run();
 
-      if (updateResult.meta.changes === 0) {
-        outOfStockItem = item;
-        break;
+        if (updateResult.meta.changes === 0) {
+          outOfStockItem = item;
+          break;
+        }
+        reservedItems.push(item);
       }
-      reservedItems.push(item);
+      if (outOfStockItem) break;
     }
 
     if (outOfStockItem) {
@@ -675,51 +844,101 @@ export async function handleCreateFoodOrder(request, env, context) {
       return errorResponse('CONFLICT', `Item "${outOfStockItem.name}" is out of stock or does not have enough remaining portions.`, 409);
     }
 
-    // 5. Database Insert Transaction
+    // 7. Atomic Database Batch: Parent Checkout + Isolated Child Vendor Orders
     const statements = [];
 
+    // Insert Parent Checkout
     statements.push(env.DB.prepare(`
-      INSERT INTO food_orders (
-        id, order_number, token_number, student_id, student_name, student_phone,
-        vendor_id, vendor_name, counter_location, payment_method,
-        payment_status, order_status, subtotal, discount, grand_total,
-        pickup_otp, pickup_qr_secret, idempotency_key, razorpay_order_id,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO food_checkouts (
+        id, checkout_number, student_id, student_name, student_phone,
+        payment_method, payment_status, subtotal, grand_total,
+        idempotency_key, razorpay_order_id, order_count, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      internalOrderId, publicOrderNumber, tokenNumber, studentId, studentName || 'Student', studentPhone || '',
-      finalVendorId, vendorName, counterLocation, paymentMethod,
-      initialPaymentStatus, initialOrderStatus, subtotal, grandTotal,
-      pickupOtp, pickupQrSecret, idempotencyKey || null, razorpayOrderId,
-      now, now
+      internalCheckoutId, publicCheckoutNumber, studentId, verifiedStudentName, verifiedStudentPhone,
+      paymentMethod, initialPaymentStatus, checkoutSubtotal, checkoutGrandTotal,
+      idempotencyKey || null, razorpayOrderId, vendorGroups.length, now, now
     ));
 
-    for (const item of validatedItems) {
-      const itemId = `foi_${crypto.randomUUID().replace(/-/g, '')}`;
+    const createdOrders = [];
+
+    // For each vendor group, generate separate vendor order record
+    for (const group of vendorGroups) {
+      const internalOrderId = `fo_${crypto.randomUUID().replace(/-/g, '')}`;
+      const publicOrderNumber = await generateFoodOrderNumber(env.DB);
+      const tokenNumber = await generateCounterToken(env.DB);
+
+      // Secure 6-digit random pickup code (Part 11)
+      const pickupOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      const pickupQrSecret = `pkr_${crypto.randomUUID().replace(/-/g, '')}`;
+
       statements.push(env.DB.prepare(`
-        INSERT INTO food_order_items (
-          id, order_id, product_id, product_name, category_id, dietary,
-          unit_price, quantity, item_total, cooking_notes, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO food_orders (
+          id, order_number, token_number, student_id, student_name, student_phone,
+          vendor_id, vendor_name, counter_location, payment_method,
+          payment_status, order_status, subtotal, discount, grand_total,
+          pickup_otp, pickup_qr_secret, idempotency_key, razorpay_order_id,
+          checkout_id, checkout_number, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).bind(
-        itemId, internalOrderId, item.productId, item.name, item.categoryId, item.dietary,
-        item.unitPrice, item.quantity, item.itemTotal, item.cookingNotes, now
+        internalOrderId, publicOrderNumber, tokenNumber, studentId, verifiedStudentName, verifiedStudentPhone,
+        group.vendorId, group.vendorName, group.counterLocation, paymentMethod,
+        initialPaymentStatus, initialOrderStatus, group.subtotal, group.grandTotal,
+        pickupOtp, pickupQrSecret, idempotencyKey ? `${idempotencyKey}_${group.vendorId}` : null, razorpayOrderId,
+        internalCheckoutId, publicCheckoutNumber, now, now
       ));
 
-      // Inventory decrement log
-      const logId = `inv_${crypto.randomUUID().replace(/-/g, '')}`;
-      statements.push(env.DB.prepare(`
-        INSERT INTO food_inventory_logs (id, vendor_id, product_id, change_amount, new_stock, reason, created_at)
-        SELECT ?, ?, ?, ?, stock, 'order_placed', ? FROM food_menu_items WHERE id = ?
-      `).bind(logId, finalVendorId, item.productId, -item.quantity, now, item.productId));
-    }
+      // Items for this vendor order
+      for (const item of group.items) {
+        const itemId = `foi_${crypto.randomUUID().replace(/-/g, '')}`;
+        statements.push(env.DB.prepare(`
+          INSERT INTO food_order_items (
+            id, order_id, product_id, product_name, category_id, dietary,
+            unit_price, quantity, item_total, cooking_notes, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          itemId, internalOrderId, item.productId, item.name, item.categoryId, item.dietary,
+          item.unitPrice, item.quantity, item.itemTotal, item.cookingNotes, now
+        ));
 
-    // Initial order status history log
-    const histId = `fsh_${crypto.randomUUID().replace(/-/g, '')}`;
-    statements.push(env.DB.prepare(`
-      INSERT INTO food_order_status_history (id, order_id, from_status, to_status, actor_type, actor_id, reason, created_at)
-      VALUES (?, ?, NULL, ?, 'student', ?, 'Order Placed', ?)
-    `).bind(histId, internalOrderId, initialOrderStatus, studentId, now));
+        // Inventory Log
+        const logId = `inv_${crypto.randomUUID().replace(/-/g, '')}`;
+        statements.push(env.DB.prepare(`
+          INSERT INTO food_inventory_logs (id, vendor_id, product_id, change_amount, new_stock, reason, created_at)
+          SELECT ?, ?, ?, ?, stock, 'order_placed', ? FROM food_menu_items WHERE id = ?
+        `).bind(logId, group.vendorId, item.productId, -item.quantity, now, item.productId));
+      }
+
+      // Order status history
+      const histId = `fsh_${crypto.randomUUID().replace(/-/g, '')}`;
+      statements.push(env.DB.prepare(`
+        INSERT INTO food_order_status_history (id, order_id, from_status, to_status, actor_type, actor_id, reason, created_at)
+        VALUES (?, ?, NULL, ?, 'student', ?, 'Order Placed', ?)
+      `).bind(histId, internalOrderId, initialOrderStatus, studentId, now));
+
+      createdOrders.push({
+        id: internalOrderId,
+        orderNumber: publicOrderNumber,
+        tokenNumber,
+        studentId,
+        studentName: verifiedStudentName,
+        studentPhone: verifiedStudentPhone,
+        vendorId: group.vendorId,
+        vendorName: group.vendorName,
+        counterLocation: group.counterLocation,
+        paymentMethod,
+        paymentStatus: initialPaymentStatus,
+        orderStatus: initialOrderStatus,
+        subtotal: group.subtotal,
+        grandTotal: group.grandTotal,
+        pickupOtp,
+        pickupQrSecret,
+        checkoutId: internalCheckoutId,
+        checkoutNumber: publicCheckoutNumber,
+        createdAt: now,
+        items: group.items,
+      });
+    }
 
     try {
       await env.DB.batch(statements);
@@ -735,29 +954,25 @@ export async function handleCreateFoodOrder(request, env, context) {
       throw batchErr;
     }
 
-    const fullOrder = {
-      id: internalOrderId,
-      orderNumber: publicOrderNumber,
-      tokenNumber,
+    const fullCheckout = {
+      id: internalCheckoutId,
+      checkoutNumber: publicCheckoutNumber,
       studentId,
-      studentName: studentName || 'Student',
-      studentPhone: studentPhone || '',
-      vendorId: finalVendorId,
-      vendorName,
-      counterLocation,
+      studentName: verifiedStudentName,
+      studentPhone: verifiedStudentPhone,
       paymentMethod,
       paymentStatus: initialPaymentStatus,
-      orderStatus: initialOrderStatus,
-      subtotal,
-      grandTotal,
-      pickupOtp,
-      pickupQrSecret,
+      subtotal: checkoutSubtotal,
+      grandTotal: checkoutGrandTotal,
+      orderCount: createdOrders.length,
       createdAt: now,
-      items: validatedItems,
+      orders: createdOrders,
     };
 
     return successResponse({
-      order: fullOrder,
+      checkout: fullCheckout,
+      order: createdOrders[0], // for backwards compatibility with single-counter readers
+      orders: createdOrders,
       requiresPayment: paymentMethod === 'ONLINE_UPI',
       payment: paymentData,
     });
@@ -778,16 +993,80 @@ export async function handleVerifyFoodPayment(request, env, context) {
     if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
 
     const body = await request.json();
-    const { orderId, providerOrderId, providerPaymentId, providerSignature } = body;
+    const { 
+      checkoutId, 
+      orderId, 
+      providerOrderId, 
+      providerPaymentId, 
+      providerSignature 
+    } = body;
 
-    if (!orderId || !providerOrderId) {
+    if ((!checkoutId && !orderId) || !providerOrderId) {
       return errorResponse('BAD_REQUEST', 'Missing required order or payment credentials.', 400);
     }
 
+    const now = Date.now();
+    const isDevMock = env.PAYMENT_MODE === 'mock' && env.ENVIRONMENT !== 'production';
+
+    // Verify signature strictly on server
+    if (!isDevMock) {
+      if (!providerSignature || !providerPaymentId) {
+        return errorResponse('BAD_REQUEST', 'Missing gateway signature or payment ID.', 400);
+      }
+      const provider = new PaymentProvider(env);
+      const isValid = await provider.verifySignature(providerOrderId, providerPaymentId, providerSignature);
+      if (!isValid) {
+        return errorResponse('BAD_REQUEST', 'Server-side payment signature verification failed.', 400);
+      }
+    }
+
+    const paymentId = providerPaymentId || `mock_pay_${Date.now()}`;
+
+    // Case 1: Verification for Parent Checkout
+    if (checkoutId) {
+      const checkout = await env.DB.prepare(`
+        SELECT * FROM food_checkouts 
+        WHERE (id = ? OR checkout_number = ?) AND student_id = ?
+      `).bind(checkoutId, checkoutId, studentId).first();
+
+      if (checkout) {
+        await env.DB.prepare(`
+          UPDATE food_checkouts 
+          SET payment_status = 'paid', razorpay_payment_id = ?, updated_at = ?
+          WHERE id = ?
+        `).bind(paymentId, now, checkout.id).run();
+
+        await env.DB.prepare(`
+          UPDATE food_orders 
+          SET payment_status = 'paid', order_status = 'confirmed', razorpay_payment_id = ?, updated_at = ?
+          WHERE checkout_id = ?
+        `).bind(paymentId, now, checkout.id).run();
+
+        const childOrders = await env.DB.prepare(`
+          SELECT * FROM food_orders WHERE checkout_id = ?
+        `).bind(checkout.id).all();
+
+        for (const ord of childOrders.results || []) {
+          await recordFoodOrderStatusHistory(env.DB, ord.id, 'payment_pending', 'confirmed', 'system', 'payment_verified', 'Online UPI Payment Confirmed');
+        }
+
+        return successResponse({
+          status: 'paid',
+          paymentStatus: 'paid',
+          checkoutId: checkout.id,
+          checkoutNumber: checkout.checkout_number,
+          orders: childOrders.results || [],
+          message: 'Checkout payment verified successfully.'
+        });
+      }
+    }
+
+    // Case 2: Verification for Single Child Order (or fallback by orderId)
+    const targetId = orderId || checkoutId;
     const order = await env.DB.prepare(`
       SELECT * FROM food_orders 
       WHERE (id = ? OR order_number = ?) AND student_id = ?
-    `).bind(orderId, orderId, studentId).first();
+    `).bind(targetId, targetId, studentId).first();
 
     if (!order) {
       return errorResponse('NOT_FOUND', 'Food order not found.', 404);
@@ -801,42 +1080,29 @@ export async function handleVerifyFoodPayment(request, env, context) {
       });
     }
 
-    const now = Date.now();
-    const claim = await env.DB.prepare(`
-      UPDATE food_orders 
-      SET payment_status = 'processing_verification', updated_at = ?
-      WHERE id = ? AND payment_status = 'pending'
-    `).bind(now, order.id).run();
-
-    if (claim.meta.changes === 0 && order.payment_status !== 'processing_verification') {
-      return errorResponse('CONFLICT', 'Payment verification already in progress.', 409);
-    }
-
-    const isDevMock = env.PAYMENT_MODE === 'mock' && env.ENVIRONMENT !== 'production';
-
-    if (!isDevMock) {
-      if (!providerSignature || !providerPaymentId) {
-        await env.DB.prepare(`UPDATE food_orders SET payment_status = 'failed', updated_at = ? WHERE id = ?`).bind(now, order.id).run();
-        return errorResponse('BAD_REQUEST', 'Missing gateway signature or payment ID.', 400);
-      }
-
-      const provider = new PaymentProvider(env);
-      const isValid = await provider.verifySignature(providerOrderId, providerPaymentId, providerSignature);
-
-      if (!isValid) {
-        await env.DB.prepare(`UPDATE food_orders SET payment_status = 'verification_failed', updated_at = ? WHERE id = ?`).bind(now, order.id).run();
-        return errorResponse('BAD_REQUEST', 'Server-side payment signature verification failed.', 400);
-      }
-    }
-
+    // Update child order
     await env.DB.prepare(`
       UPDATE food_orders 
-      SET payment_status = 'paid', 
-          order_status = 'confirmed', 
-          razorpay_payment_id = ?, 
-          updated_at = ?
+      SET payment_status = 'paid', order_status = 'confirmed', razorpay_payment_id = ?, updated_at = ?
       WHERE id = ?
-    `).bind(providerPaymentId || `mock_pay_${Date.now()}`, now, order.id).run();
+    `).bind(paymentId, now, order.id).run();
+
+    await recordFoodOrderStatusHistory(env.DB, order.id, order.order_status, 'confirmed', 'system', 'payment_verified', 'Online UPI Payment Confirmed');
+
+    // If order is part of parent checkout, update parent checkout and siblings
+    if (order.checkout_id) {
+      await env.DB.prepare(`
+        UPDATE food_checkouts 
+        SET payment_status = 'paid', razorpay_payment_id = ?, updated_at = ?
+        WHERE id = ?
+      `).bind(paymentId, now, order.checkout_id).run();
+
+      await env.DB.prepare(`
+        UPDATE food_orders 
+        SET payment_status = 'paid', order_status = 'confirmed', razorpay_payment_id = ?, updated_at = ?
+        WHERE checkout_id = ?
+      `).bind(paymentId, now, order.checkout_id).run();
+    }
 
     return successResponse({
       status: 'paid',
@@ -853,7 +1119,7 @@ export async function handleVerifyFoodPayment(request, env, context) {
 }
 
 /**
- * 4. List Student's Food Orders
+ * 4. List Student's Food Orders (Separated strictly from Printing)
  * GET /api/food/orders
  */
 export async function handleGetFoodOrders(request, env, context) {
@@ -862,14 +1128,46 @@ export async function handleGetFoodOrders(request, env, context) {
     const studentId = context.user.id;
     if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
 
-    const ordersResult = await env.DB.prepare(`
-      SELECT * FROM food_orders 
-      WHERE student_id = ? 
-      ORDER BY created_at DESC 
-      LIMIT 50
-    `).bind(studentId).all();
+    const url = new URL(request.url);
+    const statusFilter = url.searchParams.get('status') || 'all';
 
-    return successResponse({ orders: ordersResult.results || [] });
+    let conditions = ['student_id = ?'];
+    let params = [studentId];
+
+    if (statusFilter === 'active') {
+      conditions.push("order_status IN ('confirmed', 'accepted', 'preparing')");
+    } else if (statusFilter === 'ready_for_pickup') {
+      conditions.push("order_status = 'ready_for_pickup'");
+    } else if (statusFilter === 'completed') {
+      conditions.push("order_status = 'completed'");
+    } else if (statusFilter === 'cancelled') {
+      conditions.push("order_status IN ('cancelled', 'rejected')");
+    }
+
+    const querySql = `
+      SELECT * FROM food_orders 
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY created_at DESC 
+      LIMIT 100
+    `;
+
+    const ordersResult = await env.DB.prepare(querySql).bind(...params).all();
+    const ordersList = ordersResult.results || [];
+
+    // Attach items to each order
+    const populatedOrders = [];
+    for (const ord of ordersList) {
+      const itemsRes = await env.DB.prepare(`
+        SELECT * FROM food_order_items WHERE order_id = ? ORDER BY created_at ASC
+      `).bind(ord.id).all();
+
+      populatedOrders.push({
+        ...ord,
+        items: itemsRes.results || [],
+      });
+    }
+
+    return successResponse({ orders: populatedOrders, total: populatedOrders.length });
   } catch (err) {
     console.error('Get Food Orders Error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to retrieve food orders.', 500);
@@ -877,7 +1175,7 @@ export async function handleGetFoodOrders(request, env, context) {
 }
 
 /**
- * 5. Get Detailed Food Order by ID
+ * 5. Get Detailed Food Order by ID (Includes parent checkout & sibling child orders)
  * GET /api/food/orders/:id
  */
 export async function handleGetFoodOrderById(request, env, context, id) {
@@ -886,8 +1184,137 @@ export async function handleGetFoodOrderById(request, env, context, id) {
     const studentId = context.user.id;
     if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
 
+    // 1. Try finding in food_orders
     const order = await env.DB.prepare(`
       SELECT * FROM food_orders 
+      WHERE (id = ? OR order_number = ?) AND student_id = ?
+    `).bind(id, id, studentId).first();
+
+    if (order) {
+      const itemsResult = await env.DB.prepare(`
+        SELECT * FROM food_order_items WHERE order_id = ?
+      `).bind(order.id).all();
+
+      let childOrders = [{ ...order, items: itemsResult.results || [] }];
+      let parentCheckout = null;
+
+      if (order.checkout_id) {
+        parentCheckout = await env.DB.prepare(`
+          SELECT * FROM food_checkouts WHERE id = ?
+        `).bind(order.checkout_id).first();
+
+        const siblings = await env.DB.prepare(`
+          SELECT * FROM food_orders WHERE checkout_id = ? AND student_id = ? ORDER BY created_at ASC
+        `).bind(order.checkout_id, studentId).all();
+
+        childOrders = [];
+        for (const sib of siblings.results || []) {
+          const sibItems = await env.DB.prepare(`SELECT * FROM food_order_items WHERE order_id = ?`).bind(sib.id).all();
+          childOrders.push({ ...sib, items: sibItems.results || [] });
+        }
+      }
+
+      return successResponse({
+        order: {
+          ...order,
+          items: itemsResult.results || [],
+        },
+        checkout: parentCheckout,
+        childOrders,
+      });
+    }
+
+    // 2. Try finding in food_checkouts (if student queried by checkout number)
+    const checkout = await env.DB.prepare(`
+      SELECT * FROM food_checkouts 
+      WHERE (id = ? OR checkout_number = ?) AND student_id = ?
+    `).bind(id, id, studentId).first();
+
+    if (checkout) {
+      const linkedOrders = await env.DB.prepare(`
+        SELECT * FROM food_orders WHERE checkout_id = ? AND student_id = ? ORDER BY created_at ASC
+      `).bind(checkout.id, studentId).all();
+
+      const ordersWithItems = [];
+      for (const ord of linkedOrders.results || []) {
+        const itms = await env.DB.prepare(`SELECT * FROM food_order_items WHERE order_id = ?`).bind(ord.id).all();
+        ordersWithItems.push({ ...ord, items: itms.results || [] });
+      }
+
+      return successResponse({
+        checkout,
+        order: ordersWithItems[0] || null,
+        childOrders: ordersWithItems,
+      });
+    }
+
+    return errorResponse('NOT_FOUND', 'Food order not found.', 404);
+  } catch (err) {
+    console.error('Get Food Order Detail Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to retrieve food order details.', 500);
+  }
+}
+
+/**
+ * 5b. Get Food Checkout Session Details
+ * GET /api/food/checkouts/:id
+ */
+export async function handleGetFoodCheckoutById(request, env, context, id) {
+  try {
+    await ensureFoodTables(env.DB);
+    const studentId = context.user.id;
+    if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
+
+    const checkout = await env.DB.prepare(`
+      SELECT * FROM food_checkouts 
+      WHERE (id = ? OR checkout_number = ?) AND student_id = ?
+    `).bind(id, id, studentId).first();
+
+    if (!checkout) {
+      return errorResponse('NOT_FOUND', 'Checkout session not found.', 404);
+    }
+
+    const linkedOrders = await env.DB.prepare(`
+      SELECT * FROM food_orders WHERE checkout_id = ? ORDER BY created_at ASC
+    `).bind(checkout.id).all();
+
+    const ordersWithItems = [];
+    for (const ord of linkedOrders.results || []) {
+      const itms = await env.DB.prepare(`SELECT * FROM food_order_items WHERE order_id = ?`).bind(ord.id).all();
+      ordersWithItems.push({ ...ord, items: itms.results || [] });
+    }
+
+    return successResponse({
+      checkout: {
+        ...checkout,
+        orders: ordersWithItems,
+      }
+    });
+  } catch (err) {
+    console.error('Get Food Checkout Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to retrieve checkout details.', 500);
+  }
+}
+
+/**
+ * 5c. Report Issue with Food Order (Part 12 Help & Support)
+ * POST /api/food/orders/:id/issue
+ */
+export async function handleReportFoodOrderIssue(request, env, context, id) {
+  try {
+    await ensureFoodTables(env.DB);
+    const studentId = context.user.id;
+    if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
+
+    const body = await request.json();
+    const { issueType, description } = body;
+
+    if (!issueType || !description || !description.trim()) {
+      return errorResponse('BAD_REQUEST', 'Please select an issue type and provide a description.', 400);
+    }
+
+    const order = await env.DB.prepare(`
+      SELECT id, order_number, vendor_name FROM food_orders 
       WHERE (id = ? OR order_number = ?) AND student_id = ?
     `).bind(id, id, studentId).first();
 
@@ -895,19 +1322,23 @@ export async function handleGetFoodOrderById(request, env, context, id) {
       return errorResponse('NOT_FOUND', 'Food order not found.', 404);
     }
 
-    const itemsResult = await env.DB.prepare(`
-      SELECT * FROM food_order_items WHERE order_id = ?
-    `).bind(order.id).all();
+    const issueId = `fiss_${crypto.randomUUID().replace(/-/g, '')}`;
+    const now = Date.now();
+
+    await env.DB.prepare(`
+      INSERT INTO food_order_issues (
+        id, order_id, order_number, student_id, issue_type, description, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)
+    `).bind(issueId, order.id, order.order_number, studentId, issueType, description.trim(), now, now).run();
 
     return successResponse({
-      order: {
-        ...order,
-        items: itemsResult.results || [],
-      },
+      issueId,
+      orderNumber: order.order_number,
+      message: `Your issue regarding order ${order.order_number} has been logged. Our campus dining team will resolve it promptly.`
     });
   } catch (err) {
-    console.error('Get Food Order Detail Error:', err);
-    return errorResponse('SERVER_ERROR', 'Failed to retrieve food order details.', 500);
+    console.error('Report Food Order Issue Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to submit food support issue.', 500);
   }
 }
 
