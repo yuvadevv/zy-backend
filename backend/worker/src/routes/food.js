@@ -733,14 +733,14 @@ export async function handleGetFoodMessWeeklyMenu(request, env, context) {
     `).all().catch(() => ({ results: [] }));
 
     const DAY_MAP = {
-      'sunday': 0, 'sun': 0, '0': 0, 0: 0,
-      'monday': 1, 'mon': 1, '1': 1, 1: 1,
-      'tuesday': 2, 'tue': 2, '2': 2, 2: 2,
-      'wednesday': 3, 'wed': 3, '3': 3, 3: 3,
-      'thursday': 4, 'thu': 4, '4': 4, 4: 4,
-      'friday': 5, 'fri': 5, '5': 5, 5: 5,
-      'saturday': 6, 'sat': 6, '6': 6, 6: 6,
-      'monthly special': -1, 'monthly_special': -1, 'special': -1, '-1': -1, (-1): -1
+      'sunday': 0, 'sun': 0, '0': 0,
+      'monday': 1, 'mon': 1, '1': 1,
+      'tuesday': 2, 'tue': 2, '2': 2,
+      'wednesday': 3, 'wed': 3, '3': 3,
+      'thursday': 4, 'thu': 4, '4': 4,
+      'friday': 5, 'fri': 5, '5': 5,
+      'saturday': 6, 'sat': 6, '6': 6,
+      'monthly special': -1, 'monthly_special': -1, 'special': -1, '-1': -1
     };
 
     let menu = (rows.results || []).map(r => {
