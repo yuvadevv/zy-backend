@@ -32,23 +32,18 @@ export async function handleLogin(request, env) {
     let email = rawIdentifier;
 
     if (rawIdentifier.includes('@')) {
-      // It's an email, strictly search by email to avoid username collisions
-      const vendor = await env.DB.prepare('SELECT email FROM vendors WHERE email = ?').bind(rawIdentifier).first();
-      if (vendor && vendor.email) {
-        email = vendor.email;
-      } else {
-        const admin = await env.DB.prepare('SELECT email FROM admin_users WHERE email = ?').bind(rawIdentifier).first();
-        if (admin && admin.email) {
-          email = admin.email;
-        }
-      }
+      email = rawIdentifier;
     } else {
-      // It's a username, strictly search by username
-      const vendor = await env.DB.prepare('SELECT email FROM vendors WHERE username = ?').bind(rawIdentifier).first();
-      if (vendor && vendor.email) {
-        email = vendor.email;
-      } else {
-        // Fallback for students using roll number as username, which gets mapped to a dummy email
+      // It's a username, safely search by username with error tolerance
+      try {
+        const vendor = await env.DB.prepare('SELECT email FROM vendors WHERE username = ?').bind(rawIdentifier).first();
+        if (vendor && vendor.email) {
+          email = vendor.email;
+        } else {
+          email = `${rawIdentifier}@vendor.blintzy.local`;
+        }
+      } catch (dbErr) {
+        console.warn('D1 username lookup error, falling back:', dbErr.message);
         email = `${rawIdentifier}@vendor.blintzy.local`;
       }
     }
