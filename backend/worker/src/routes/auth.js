@@ -4,19 +4,31 @@ import { errorResponse, successResponse } from '../utils/response.js';
  * Helper to call Supabase Auth API from the backend using SERVICE_ROLE_KEY
  */
 async function callSupabaseAuth(env, path, body) {
-  const url = `${env.SUPABASE_URL}${path}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'apikey': env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
+  try {
+    const url = `${env.SUPABASE_URL}${path}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'apikey': env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
 
-  const data = await response.json().catch(() => null);
-  return { ok: response.ok, status: response.status, data };
+    const data = await response.json().catch(() => null);
+    return { ok: response.ok, status: response.status, data };
+  } catch (netErr) {
+    console.error('callSupabaseAuth network failure:', netErr);
+    return { 
+      ok: false, 
+      status: 503, 
+      data: { 
+        error: 'AUTH_GATEWAY_UNAVAILABLE', 
+        message: 'Authentication service temporarily unavailable. Please check network connectivity.' 
+      } 
+    };
+  }
 }
 
 export async function handleLogin(request, env) {
