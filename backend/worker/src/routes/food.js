@@ -732,6 +732,17 @@ export async function handleGetFoodMessWeeklyMenu(request, env, context) {
       SELECT * FROM food_mess_weekly_menu WHERE is_active = 1 ORDER BY sort_order ASC
     `).all().catch(() => ({ results: [] }));
 
+    const DAY_MAP = {
+      'sunday': 0, 'sun': 0, '0': 0, 0: 0,
+      'monday': 1, 'mon': 1, '1': 1, 1: 1,
+      'tuesday': 2, 'tue': 2, '2': 2, 2: 2,
+      'wednesday': 3, 'wed': 3, '3': 3, 3: 3,
+      'thursday': 4, 'thu': 4, '4': 4, 4: 4,
+      'friday': 5, 'fri': 5, '5': 5, 5: 5,
+      'saturday': 6, 'sat': 6, '6': 6, 6: 6,
+      'monthly special': -1, 'monthly_special': -1, 'special': -1, '-1': -1, (-1): -1
+    };
+
     let menu = (rows.results || []).map(r => {
       let items = [];
       try {
@@ -739,11 +750,13 @@ export async function handleGetFoodMessWeeklyMenu(request, env, context) {
       } catch {
         items = (r.items || '').split(',').map(s => s.trim());
       }
+      const rawDay = String(r.day_of_week || '').toLowerCase().trim();
+      const numDay = rawDay in DAY_MAP ? DAY_MAP[rawDay] : (typeof r.day_of_week === 'number' ? r.day_of_week : 1);
       return {
         id: r.id,
         vendorId: r.vendor_id,
-        day: r.day_of_week === -1 ? 'Monthly Special' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][r.day_of_week] || r.day_of_week,
-        dayOfWeek: r.day_of_week,
+        day: numDay === -1 ? 'Monthly Special' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][numDay] || r.day_of_week,
+        dayOfWeek: numDay,
         title: r.title,
         items,
         image: r.image || '/images/food/rce_mess_cover.webp',
