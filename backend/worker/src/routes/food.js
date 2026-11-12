@@ -404,19 +404,29 @@ export async function ensureFoodTables(db) {
   }
 }
 
-// Helper: Resolve & Validate Vendor Identity
+// Helper: Resolve & Validate Vendor Identity (Security Enforced: Context Authoritative)
 function resolveVendorId(request, url, body = null, context = null) {
-  const vendorId = 
-    request.headers.get('X-Vendor-ID') || 
-    url?.searchParams.get('vendorId') || 
-    body?.vendorId || 
-    context?.vendorId ||
-    context?.vendor?.id;
+  // 1. Authenticated Vendor Context is strictly authoritative (Prevents BOLA/IDOR header forgery)
+  if (context?.vendorId) return context.vendorId;
+  if (context?.vendor?.id) return context.vendor.id;
 
-  if (!vendorId) {
-    return FOOD_VENDORS.CANTEEN_STALL.id;
+  // 2. Authenticated Admin acting on behalf of a specific vendor
+  if (context?.admin) {
+    return (
+      request.headers.get('X-Vendor-ID') ||
+      url?.searchParams?.get('vendorId') ||
+      body?.vendorId ||
+      FOOD_VENDORS.CANTEEN_STALL.id
+    );
   }
-  return vendorId;
+
+  // 3. Unauthenticated/Public Fallback
+  return (
+    request.headers.get('X-Vendor-ID') ||
+    url?.searchParams?.get('vendorId') ||
+    body?.vendorId ||
+    FOOD_VENDORS.CANTEEN_STALL.id
+  );
 }
 
 // Generate formatted Food Checkout Number e.g. BLZ-CHK-26-1001

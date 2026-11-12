@@ -1,4 +1,18 @@
 // paymentProvider.js
+
+/**
+ * Constant-time string comparison to prevent timing attacks on cryptographic signatures
+ */
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
 export class PaymentProvider {
   constructor(env) {
     this.env = env;
@@ -119,7 +133,7 @@ export class PaymentProvider {
     const hashArray = Array.from(new Uint8Array(signatureBuffer));
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     
-    return hashHex === signature;
+    return timingSafeEqual(hashHex, signature);
   }
   
   async verifyWebhookSignature(rawBody, signature) {
@@ -142,7 +156,7 @@ export class PaymentProvider {
     const hashArray = Array.from(new Uint8Array(signatureBuffer));
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     
-    return hashHex === signature;
+    return timingSafeEqual(hashHex, signature);
   }
   
   async refundPayment(paymentId, amount, receipt) {
