@@ -1,338 +1,459 @@
-// Authoritative Food Catalogue and Server-side Pricing Validation for BLINTZY Food
+/**
+ * BLINTZY Official Food Configuration: RCE MESS & CHOPSTICKS
+ * Authoritative catalogue definitions matching college counters.
+ */
 
 export const FOOD_VENDORS = {
-  CANTEEN_STALL: {
+  CHOPSTICKS: {
     id: 'vendor_canteen_stall',
-    name: 'Campus Canteen Stall',
-    counterLocation: 'Counter 1 (Main Food Court)',
-    stallNumber: 'Stall #1',
-    cuisine: 'Fast Food, Tiffins & Curries',
-    isOpen: true,
+    name: 'CHOPSTICKS',
+    stall_name: 'CHOPSTICKS',
+    counter_location: 'Chopsticks Counter (Main Food Court)',
+    counterLocation: 'Chopsticks Counter (Main Food Court)',
+    description: 'Fast food & authentic biryanis, fried rice, noodles and sizzling starters.',
+    image: '/images/food/chopsticks_cover.webp',
+    status: 'active',
+    onboarding_status: 'approved',
+    phone: '919876543211',
+    upi_id: 'chopsticks@icici',
+    opens_at: '10:00 AM',
+    closes_at: '09:00 PM',
+    is_accepting_orders: 1
   },
-  COLLEGE_MESS: {
+  RCE_MESS: {
     id: 'vendor_college_mess',
-    name: 'College Mess Dining',
-    counterLocation: 'Dining Hall Counter (Mess Block)',
-    stallNumber: 'Mess Hall',
-    cuisine: 'Daily Thalis & Traditional Meals',
-    isOpen: true,
-  },
+    name: 'RCE MESS',
+    stall_name: 'RCE MESS',
+    counter_location: 'RCE Mess Dining Hall Counter',
+    counterLocation: 'RCE Mess Dining Hall Counter',
+    description: 'Official College Mess serving wholesome traditional South Indian meals, daily specials, and Sunday feasts.',
+    image: '/images/food/rce_mess_cover.webp',
+    status: 'active',
+    onboarding_status: 'approved',
+    phone: '919876543212',
+    upi_id: 'rcemess@sbi',
+    opens_at: '07:30 AM',
+    closes_at: '09:30 PM',
+    is_accepting_orders: 1
+  }
 };
 
-export const AUTHORITATIVE_FOOD_MENU = [
-  // 1. Breakfast (Campus Canteen)
-  {
-    id: 'food_bf_01',
-    name: 'Special Ghee Sambar Idli (2 pcs)',
-    price: 35,
-    categoryId: 'breakfast',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_bf_02',
-    name: 'Crispy Masala Dosa',
-    price: 50,
-    categoryId: 'breakfast',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_bf_03',
-    name: 'Poori with Potato Masala (2 pcs)',
-    price: 45,
-    categoryId: 'breakfast',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
+// Backwards-compatible aliases for any legacy code referencing CANTEEN_STALL / COLLEGE_MESS
+FOOD_VENDORS.CANTEEN_STALL = FOOD_VENDORS.CHOPSTICKS;
+FOOD_VENDORS.COLLEGE_MESS = FOOD_VENDORS.RCE_MESS;
 
-  // 2. Meals (College Mess)
+export const CHOPSTICKS_MENU_ITEMS = [
+  // CHICKEN ITEMS
   {
-    id: 'food_vm_01',
-    name: 'Special South Indian Meals Plate',
-    price: 80,
-    categoryId: 'meals',
-    vendorId: FOOD_VENDORS.COLLEGE_MESS.id,
-    vendorName: FOOD_VENDORS.COLLEGE_MESS.name,
-    counterLocation: FOOD_VENDORS.COLLEGE_MESS.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_vm_02',
-    name: 'North Indian Mini Thali',
-    price: 95,
-    categoryId: 'meals',
-    vendorId: FOOD_VENDORS.COLLEGE_MESS.id,
-    vendorName: FOOD_VENDORS.COLLEGE_MESS.name,
-    counterLocation: FOOD_VENDORS.COLLEGE_MESS.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-
-  // 3. Veg Curries (Campus Canteen)
-  {
-    id: 'food_vc_01',
-    name: 'Paneer Butter Masala',
-    price: 110,
-    categoryId: 'veg-curries',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_vc_02',
-    name: 'Kadai Mushroom Curry',
-    price: 100,
-    categoryId: 'veg-curries',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_vc_03',
-    name: 'Mixed Veg Handi',
-    price: 85,
-    categoryId: 'veg-curries',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-
-  // 4. Chicken Curries (Campus Canteen)
-  {
-    id: 'food_cc_01',
-    name: 'Butter Chicken Masala',
-    price: 130,
-    categoryId: 'chicken-curries',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
+    id: 'chopsticks_chk_01',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Chicken Dum Biryani',
+    description: 'Aromatic slow-cooked basmati rice layered with marinated tender chicken, saffron, browned onions and whole spices.',
+    price: 150,
+    category_id: 'biryani',
+    categoryId: 'biryani',
     dietary: 'non-veg',
+    image: '/images/food/chicken_dum_biryani.jpg',
+    is_available: 1,
     isAvailable: true,
+    stock: 60,
+    meal_type: 'all_day'
   },
   {
-    id: 'food_cc_02',
-    name: 'Andhra Spicy Chicken Curry',
-    price: 120,
-    categoryId: 'chicken-curries',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
+    id: 'chopsticks_chk_02',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Chicken Fry Biryani',
+    description: 'Flavorful spiced biryani rice topped with crispy, spicy Andhra-style chicken fry pieces.',
+    price: 150,
+    category_id: 'biryani',
+    categoryId: 'biryani',
     dietary: 'non-veg',
+    image: '/images/food/chicken_fry_biryani.jpg',
+    is_available: 1,
     isAvailable: true,
+    stock: 50,
+    meal_type: 'all_day'
   },
   {
-    id: 'food_cc_03',
-    name: 'Chicken Mughlai Gravy',
-    price: 135,
-    categoryId: 'chicken-curries',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'non-veg',
-    isAvailable: true,
-  },
-
-  // 5. Fried Rice (Campus Canteen)
-  {
-    id: 'food_fr_01',
-    name: 'Egg Fried Rice',
-    price: 75,
-    categoryId: 'fried-rice',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'egg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_fr_02',
+    id: 'chopsticks_chk_03',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
     name: 'Chicken Fried Rice',
+    description: 'Wok-tossed long-grain rice with shredded chicken, scrambled eggs, crisp spring onions and oriental seasoning.',
+    price: 100,
+    category_id: 'fried-rice',
+    categoryId: 'fried-rice',
+    dietary: 'non-veg',
+    image: '/images/food/chicken_fried_rice.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 50,
+    meal_type: 'all_day'
+  },
+  {
+    id: 'chopsticks_chk_04',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Chicken Noodles',
+    description: 'Stir-fried noodles loaded with succulent chicken strips, fresh julienned vegetables and spicy chili-garlic soy sauce.',
+    price: 100,
+    category_id: 'noodles',
+    categoryId: 'noodles',
+    dietary: 'non-veg',
+    image: '/images/food/chicken_noodles.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 50,
+    meal_type: 'all_day'
+  },
+  {
+    id: 'chopsticks_chk_05',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Chicken Manchurian',
+    description: 'Crispy chicken bites tossed in a tangy, spicy Indo-Chinese dark soya and garlic sauce with capsicum.',
+    price: 130,
+    category_id: 'starters',
+    categoryId: 'starters',
+    dietary: 'non-veg',
+    image: '/images/food/chicken_manchurian.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 40,
+    meal_type: 'all_day'
+  },
+  {
+    id: 'chopsticks_chk_06',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Chicken Mughalai Biryani',
+    description: 'Rich royal biryani cooked with egg, cashew paste, rich spices and tender chicken morsels in Mughlai style.',
+    price: 180,
+    category_id: 'biryani',
+    categoryId: 'biryani',
+    dietary: 'non-veg',
+    image: '/images/food/chicken_mughalai_biryani.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 35,
+    meal_type: 'all_day'
+  },
+  {
+    id: 'chopsticks_chk_07',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Chilli Chicken',
+    description: 'Classic wok-seared boneless chicken tossed with fiery green chillies, onions, garlic and dark soy.',
+    price: 150,
+    category_id: 'starters',
+    categoryId: 'starters',
+    dietary: 'non-veg',
+    image: '/images/food/chilli_chicken.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 45,
+    meal_type: 'all_day'
+  },
+  {
+    id: 'chopsticks_chk_08',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Chicken 65',
+    description: 'Famous Andhra hot spiced deep-fried chicken cubes tossed with curry leaves, crushed garlic and curd.',
+    price: 160,
+    category_id: 'starters',
+    categoryId: 'starters',
+    dietary: 'non-veg',
+    image: '/images/food/chicken_65.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 40,
+    meal_type: 'all_day'
+  },
+  {
+    id: 'chopsticks_chk_09',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Pepper Chicken Dry',
+    description: 'Chettinad style dry-roasted chicken with fresh crushed black pepper, caramelized onions and curry aromatics.',
+    price: 150,
+    category_id: 'starters',
+    categoryId: 'starters',
+    dietary: 'non-veg',
+    image: '/images/food/pepper_chicken_dry.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 40,
+    meal_type: 'all_day'
+  },
+
+  // VEG ITEMS
+  {
+    id: 'chopsticks_veg_01',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Paneer Biryani',
+    description: 'Fragrant dum biryani with soft grilled cottage cheese cubes, saffron-infused rice and mint masala.',
+    price: 160,
+    category_id: 'biryani',
+    categoryId: 'biryani',
+    dietary: 'veg',
+    image: '/images/food/paneer_biryani.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 40,
+    meal_type: 'all_day'
+  },
+  {
+    id: 'chopsticks_veg_02',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Mushroom Biryani',
+    description: 'Juicy fresh button mushrooms cooked in special aromatic dum spices and fragrant aged basmati rice.',
+    price: 160,
+    category_id: 'biryani',
+    categoryId: 'biryani',
+    dietary: 'veg',
+    image: '/images/food/mushroom_biryani.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 35,
+    meal_type: 'all_day'
+  },
+  {
+    id: 'chopsticks_veg_03',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Veg Fried Rice',
+    description: 'High-flame wok tossed rice with freshly chopped carrots, beans, cabbage, bell peppers and mild seasoning.',
+    price: 70,
+    category_id: 'fried-rice',
+    categoryId: 'fried-rice',
+    dietary: 'veg',
+    image: '/images/food/veg_fried_rice.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 60,
+    meal_type: 'all_day'
+  },
+  {
+    id: 'chopsticks_veg_04',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Veg Noodles',
+    description: 'Street-style wok fried noodles with garden veggies, spring onion, white pepper and light soy.',
+    price: 70,
+    category_id: 'noodles',
+    categoryId: 'noodles',
+    dietary: 'veg',
+    image: '/images/food/veg_noodles.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 60,
+    meal_type: 'all_day'
+  },
+  {
+    id: 'chopsticks_veg_05',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Veg Manchurian',
+    description: 'Golden fried vegetable dumplings simmered in delicious dark garlic-ginger and spring onion sauce.',
     price: 90,
+    category_id: 'starters',
+    categoryId: 'starters',
+    dietary: 'veg',
+    image: '/images/food/veg_manchurian.jpg',
+    is_available: 1,
+    isAvailable: true,
+    stock: 50,
+    meal_type: 'all_day'
+  },
+
+  // EGG ITEMS
+  {
+    id: 'chopsticks_egg_01',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Egg Fried Rice',
+    description: 'Wok tossed aromatic rice cooked with scrambled eggs, diced vegetables, cracked pepper and scallions.',
+    price: 90,
+    category_id: 'fried-rice',
     categoryId: 'fried-rice',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
     dietary: 'non-veg',
+    image: '/images/food/egg_fried_rice.jpg',
+    is_available: 1,
     isAvailable: true,
+    stock: 50,
+    meal_type: 'all_day'
   },
   {
-    id: 'food_fr_03',
-    name: 'Veg Schezwan Fried Rice',
-    price: 70,
-    categoryId: 'fried-rice',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-
-  // 6. Egg Items (Campus Canteen)
-  {
-    id: 'food_egg_01',
-    name: 'Egg Omelette (Double Egg)',
-    price: 30,
-    categoryId: 'egg-items',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'egg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_egg_02',
-    name: 'Boiled Egg Bhurji',
-    price: 45,
-    categoryId: 'egg-items',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'egg',
-    isAvailable: true,
-  },
-
-  // 7. Noodles (Campus Canteen)
-  {
-    id: 'food_nd_01',
-    name: 'Veg Hakka Noodles',
-    price: 70,
+    id: 'chopsticks_egg_02',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Egg Noodles',
+    description: 'Classic wok noodles with scrambled farm eggs, shredded vegetables, spices and green onion garnish.',
+    price: 90,
+    category_id: 'noodles',
     categoryId: 'noodles',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_nd_02',
-    name: 'Chicken Schezwan Noodles',
-    price: 95,
-    categoryId: 'noodles',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
     dietary: 'non-veg',
+    image: '/images/food/egg_noodles.jpg',
+    is_available: 1,
     isAvailable: true,
+    stock: 50,
+    meal_type: 'all_day'
   },
 
-  // 8. Pizza (Campus Canteen)
+  // PRAWN ITEMS
   {
-    id: 'food_pz_01',
-    name: 'Margherita Personal Pizza (7-inch)',
-    price: 99,
-    categoryId: 'pizza',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_pz_02',
-    name: 'Chicken Barbecue Pizza (7-inch)',
-    price: 139,
-    categoryId: 'pizza',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
+    id: 'chopsticks_sea_01',
+    vendor_id: 'vendor_canteen_stall',
+    vendorId: 'vendor_canteen_stall',
+    name: 'Prawn Biryani',
+    description: 'Special Coastal Andhra delicacy with spiced marinated fresh prawns layered in fragrant basmati dum rice.',
+    price: 180,
+    category_id: 'biryani',
+    categoryId: 'biryani',
     dietary: 'non-veg',
+    image: '/images/food/prawn_biryani.jpg',
+    is_available: 1,
     isAvailable: true,
-  },
-
-  // 9. Chicken Rolls (Campus Canteen)
-  {
-    id: 'food_rl_01',
-    name: 'Classic Chicken Kathi Roll',
-    price: 70,
-    categoryId: 'chicken-rolls',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'non-veg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_rl_02',
-    name: 'Double Egg Chicken Roll',
-    price: 85,
-    categoryId: 'chicken-rolls',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'non-veg',
-    isAvailable: true,
-  },
-
-  // 10. Fast Food & Quick Bites
-  {
-    id: 'food_ff_01',
-    name: 'Crispy Veg Burger',
-    price: 55,
-    categoryId: 'fast-food',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_ff_02',
-    name: 'Crispy Chicken Burger',
-    price: 75,
-    categoryId: 'fast-food',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'non-veg',
-    isAvailable: true,
-  },
-
-  // 11. Snacks & Beverages
-  {
-    id: 'food_sn_01',
-    name: 'Hot Filter Coffee',
-    price: 20,
-    categoryId: 'snacks',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
-  {
-    id: 'food_sn_02',
-    name: 'Ginger Masala Tea',
-    price: 15,
-    categoryId: 'snacks',
-    vendorId: FOOD_VENDORS.CANTEEN_STALL.id,
-    vendorName: FOOD_VENDORS.CANTEEN_STALL.name,
-    counterLocation: FOOD_VENDORS.CANTEEN_STALL.counterLocation,
-    dietary: 'veg',
-    isAvailable: true,
-  },
+    stock: 30,
+    meal_type: 'all_day'
+  }
 ];
 
+export const AUTHORITATIVE_FOOD_MENU = CHOPSTICKS_MENU_ITEMS;
+
+export const RCE_MESS_WEEKLY_MENU = [
+  {
+    day: 'Monday',
+    day_of_week: 1,
+    title: 'Monday Traditional Feast',
+    items: ['Pappu Tamata', 'Cabbage 65', 'Rasam', 'Roti Pachadi (Chutney)', 'Perugu Annam', 'Rice'],
+    meal_timings: 'Lunch: 12:30 PM - 2:30 PM | Dinner: 7:30 PM - 9:30 PM',
+    notes: 'Freshly prepared South Indian comforting spread.'
+  },
+  {
+    day: 'Tuesday',
+    day_of_week: 2,
+    title: 'Tuesday Special Curry Day',
+    items: ['Pappu Anapakaya', 'Egg Curry', 'Palak Makhani Curry', 'Roti Pachadi', 'Majjiga Chaaru', 'Rice'],
+    meal_timings: 'Lunch: 12:30 PM - 2:30 PM | Dinner: 7:30 PM - 9:30 PM',
+    notes: 'Egg Curry & Palak Makhani protein balance.'
+  },
+  {
+    day: 'Wednesday',
+    day_of_week: 3,
+    title: 'Wednesday Chicken Delight',
+    items: ['Chicken Curry', 'Rasam', 'Majjiga', 'Chutney', 'Rice'],
+    meal_timings: 'Lunch: 12:30 PM - 2:30 PM | Dinner: 7:30 PM - 9:30 PM',
+    notes: 'Midweek special Andhra Chicken Curry meal.'
+  },
+  {
+    day: 'Thursday',
+    day_of_week: 4,
+    title: 'Thursday Green Leaf & Sambhar',
+    items: ['Akkura Pappu', 'Sambhar', 'Potato Fry', 'Roti Pachadi', 'Curd Rice'],
+    meal_timings: 'Lunch: 12:30 PM - 2:30 PM | Dinner: 7:30 PM - 9:30 PM',
+    notes: 'Nutritious Akkura Pappu with crispy Potato Fry.'
+  },
+  {
+    day: 'Friday',
+    day_of_week: 5,
+    title: 'Friday Gutti Vankaya Special',
+    items: ['Pappu Tamata', 'Gutti Vankaya', 'Rasam', 'Roti Pachadi', 'Curd Rice'],
+    meal_timings: 'Lunch: 12:30 PM - 2:30 PM | Dinner: 7:30 PM - 9:30 PM',
+    notes: 'Stuffed spicy Gutti Vankaya curry with Rasam.'
+  },
+  {
+    day: 'Saturday',
+    day_of_week: 6,
+    title: 'Saturday Royal Mudha Pappu & Avakaya',
+    items: ['Mudha Pappu', 'Avakaya', 'Appadam', 'Ghee', 'Chama Dumpalu Pulusu', 'Curd Rice'],
+    meal_timings: 'Lunch: 12:30 PM - 2:30 PM | Dinner: 7:30 PM - 9:30 PM',
+    notes: 'Authentic Telugu Mudha Pappu, Pure Ghee & spicy Avakaya.'
+  },
+  {
+    day: 'Sunday',
+    day_of_week: 0,
+    title: 'Sunday Weekend Biryani Feast',
+    items: ['Veg Biryani', 'Paneer Curry', 'Raita', 'Chicken Curry (Admin Confirmation)'],
+    meal_timings: 'Lunch: 12:00 PM - 3:00 PM | Dinner: 7:30 PM - 9:30 PM',
+    notes: 'Weekend royal meal. Note: Chicken Curry item flagged for admin confirmation.',
+    admin_flagged: 1
+  },
+  {
+    day: 'Monthly Special',
+    day_of_week: -1,
+    title: "Every Month's Last Sunday Special",
+    items: ['Dum Biryani', 'Katta', 'Raita'],
+    meal_timings: 'Lunch: 12:00 PM - 3:30 PM',
+    notes: 'Grand monthly finale Dum Biryani feast.'
+  }
+];
+
+export const ITEM_IMAGE_MAP = {
+  chopsticks_chk_01: { image: '/images/food/chicken_dum_biryani.jpg' },
+  chopsticks_chk_02: { image: '/images/food/chicken_fry_biryani.jpg' },
+  chopsticks_chk_03: { image: '/images/food/chicken_fried_rice.jpg' },
+  chopsticks_chk_04: { image: '/images/food/chicken_noodles.jpg' },
+  chopsticks_chk_05: { image: '/images/food/chicken_manchurian.jpg' },
+  chopsticks_chk_06: { image: '/images/food/chicken_mughalai_biryani.jpg' },
+  chopsticks_chk_07: { image: '/images/food/chilli_chicken.jpg' },
+  chopsticks_chk_08: { image: '/images/food/chicken_65.jpg' },
+  chopsticks_chk_09: { image: '/images/food/pepper_chicken_dry.jpg' },
+  chopsticks_veg_01: { image: '/images/food/paneer_biryani.jpg' },
+  chopsticks_veg_02: { image: '/images/food/mushroom_biryani.jpg' },
+  chopsticks_veg_03: { image: '/images/food/veg_fried_rice.jpg' },
+  chopsticks_veg_04: { image: '/images/food/veg_noodles.jpg' },
+  chopsticks_veg_05: { image: '/images/food/veg_manchurian.jpg' },
+  chopsticks_egg_01: { image: '/images/food/egg_fried_rice.jpg' },
+  chopsticks_egg_02: { image: '/images/food/egg_noodles.jpg' },
+  chopsticks_sea_01: { image: '/images/food/prawn_biryani.jpg' },
+  biryani: '/images/food/chicken_dum_biryani.jpg',
+  'fried-rice': '/images/food/chicken_fried_rice.jpg',
+  noodles: '/images/food/chicken_noodles.jpg',
+  starters: '/images/food/chicken_65.jpg'
+};
+
+export function getFoodImageFallback(id, categoryId) {
+  return ITEM_IMAGE_MAP[id]?.image || ITEM_IMAGE_MAP[categoryId] || '/images/food/chopsticks_cover.webp';
+}
+
+export async function seedInitialMenuItems(db) {
+  try {
+    const existing = await db.prepare('SELECT COUNT(*) as count FROM food_menu_items').first();
+    if (existing && existing.count > 0) return;
+    const now = Date.now();
+    for (const item of CHOPSTICKS_MENU_ITEMS) {
+      await db.prepare(`
+        INSERT INTO food_menu_items (id, vendor_id, name, description, price, category_id, dietary, image, is_available, stock, meal_type, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        item.id,
+        item.vendor_id,
+        item.name,
+        item.description,
+        item.price,
+        item.category_id,
+        item.dietary,
+        item.image,
+        item.is_available,
+        item.stock,
+        item.meal_type,
+        now,
+        now
+      ).run();
+    }
+  } catch (e) {
+    console.error('seedInitialMenuItems error:', e);
+  }
+}
+
 /**
- * Validates food items against the authoritative catalogue, checks single-vendor isolation,
- * and recalculates exact prices server-side. Never trusts frontend prices or totals.
- * Supports both D1 Database query (async) and static fallback.
+ * Validates and prices items for single-vendor order requests
  */
 export async function validateAndPriceFoodOrder(dbOrItems, rawItemsOrVendorId, requestedVendorId) {
   let db = null;
@@ -389,8 +510,8 @@ export async function validateAndPriceFoodOrder(dbOrItems, rawItemsOrVendorId, r
             stock: row.stock,
             isAvailable: row.is_available === 1 && (row.vendor_status === 'active' || !row.vendor_status),
             vendorId: row.vendor_id,
-            vendorName: row.vendor_name || (row.vendor_id === FOOD_VENDORS.COLLEGE_MESS.id ? FOOD_VENDORS.COLLEGE_MESS.name : FOOD_VENDORS.CANTEEN_STALL.name),
-            counterLocation: row.counter_location || (row.vendor_id === FOOD_VENDORS.COLLEGE_MESS.id ? FOOD_VENDORS.COLLEGE_MESS.counterLocation : FOOD_VENDORS.CANTEEN_STALL.counterLocation)
+            vendorName: row.vendor_name || 'CHOPSTICKS',
+            counterLocation: row.counter_location || 'Chopsticks Counter (Main Food Court)'
           };
         }
       } catch (err) {
@@ -398,32 +519,29 @@ export async function validateAndPriceFoodOrder(dbOrItems, rawItemsOrVendorId, r
       }
     }
 
-    // Fallback to static catalogue if DB lookup didn't find it
     if (!catalogueProduct) {
-      catalogueProduct = AUTHORITATIVE_FOOD_MENU.find((p) => p.id === productId);
+      catalogueProduct = CHOPSTICKS_MENU_ITEMS.find((p) => p.id === productId);
     }
 
     if (!catalogueProduct) {
       return { success: false, error: `Food product "${productId}" not found in campus menu.` };
     }
 
-    if (!catalogueProduct.isAvailable) {
-      return { success: false, error: `Item "${catalogueProduct.name}" is currently sold out.` };
-    }
-
-    // Check available stock if tracked
-    if (catalogueProduct.stock !== undefined && catalogueProduct.stock < quantity) {
-      return { success: false, error: `Item "${catalogueProduct.name}" has only ${catalogueProduct.stock} portions remaining.` };
-    }
-
-    // Single-vendor isolation enforcement
     if (!resolvedVendorId) {
       resolvedVendorId = catalogueProduct.vendorId;
     } else if (resolvedVendorId !== catalogueProduct.vendorId) {
       return {
         success: false,
-        error: `Cannot mix items from different campus counters. All items must belong to "${catalogueProduct.vendorName}".`,
+        error: 'Multi-counter items detected in single order. Please use multi-order checkout.'
       };
+    }
+
+    if (!catalogueProduct.isAvailable) {
+      return { success: false, error: `Item "${catalogueProduct.name}" is currently sold out.` };
+    }
+
+    if (catalogueProduct.stock !== undefined && catalogueProduct.stock < quantity) {
+      return { success: false, error: `Item "${catalogueProduct.name}" has only ${catalogueProduct.stock} portions remaining.` };
     }
 
     const itemTotal = catalogueProduct.price * quantity;
@@ -435,8 +553,6 @@ export async function validateAndPriceFoodOrder(dbOrItems, rawItemsOrVendorId, r
       categoryId: catalogueProduct.categoryId,
       dietary: catalogueProduct.dietary,
       vendorId: catalogueProduct.vendorId,
-      vendorName: catalogueProduct.vendorName,
-      counterLocation: catalogueProduct.counterLocation,
       unitPrice: catalogueProduct.price,
       quantity,
       itemTotal,
@@ -444,31 +560,24 @@ export async function validateAndPriceFoodOrder(dbOrItems, rawItemsOrVendorId, r
     });
   }
 
-  const vendorObj = Object.values(FOOD_VENDORS).find((v) => v.id === resolvedVendorId) || {
-    id: resolvedVendorId,
-    name: validatedItems[0].vendorName,
-    counterLocation: validatedItems[0].counterLocation,
-  };
+  const vendorObj = Object.values(FOOD_VENDORS).find((v) => v.id === resolvedVendorId) || FOOD_VENDORS.CHOPSTICKS;
 
-  // Zero delivery charges, zero taxes, zero platform fees mandate:
-  // Subtotal equals grand total.
   return {
     success: true,
     vendorId: resolvedVendorId,
     vendorName: vendorObj.name,
-    counterLocation: vendorObj.counterLocation,
+    counterLocation: vendorObj.counterLocation || vendorObj.counter_location,
     items: validatedItems,
     subtotal,
     deliveryFee: 0,
     platformFee: 0,
     tax: 0,
-    grandTotal: subtotal,
+    grandTotal: subtotal
   };
 }
 
 /**
  * Validates and prices items grouped by vendor for unified multi-counter checkout sessions.
- * Allows items from multiple counters in the cart while segregating them into distinct vendor groups.
  */
 export async function validateAndPriceFoodMultiOrder(dbOrItems, rawItemsOrNothing) {
   let db = null;
@@ -521,8 +630,8 @@ export async function validateAndPriceFoodMultiOrder(dbOrItems, rawItemsOrNothin
             stock: row.stock,
             isAvailable: row.is_available === 1 && (row.vendor_status === 'active' || !row.vendor_status),
             vendorId: row.vendor_id,
-            vendorName: row.vendor_name || (row.vendor_id === FOOD_VENDORS.COLLEGE_MESS.id ? FOOD_VENDORS.COLLEGE_MESS.name : FOOD_VENDORS.CANTEEN_STALL.name),
-            counterLocation: row.counter_location || (row.vendor_id === FOOD_VENDORS.COLLEGE_MESS.id ? FOOD_VENDORS.COLLEGE_MESS.counterLocation : FOOD_VENDORS.CANTEEN_STALL.counterLocation)
+            vendorName: row.vendor_name || 'CHOPSTICKS',
+            counterLocation: row.counter_location || 'Chopsticks Counter (Main Food Court)'
           };
         }
       } catch (err) {
@@ -531,7 +640,7 @@ export async function validateAndPriceFoodMultiOrder(dbOrItems, rawItemsOrNothin
     }
 
     if (!catalogueProduct) {
-      catalogueProduct = AUTHORITATIVE_FOOD_MENU.find((p) => p.id === productId);
+      catalogueProduct = CHOPSTICKS_MENU_ITEMS.find((p) => p.id === productId);
     }
 
     if (!catalogueProduct) {
@@ -574,7 +683,7 @@ export async function validateAndPriceFoodMultiOrder(dbOrItems, rawItemsOrNothin
       vendorGroupsMap.set(vId, {
         vendorId: vId,
         vendorName: vendorObj.name,
-        counterLocation: vendorObj.counterLocation,
+        counterLocation: vendorObj.counterLocation || vendorObj.counter_location,
         items: [],
         subtotal: 0,
         grandTotal: 0,
@@ -599,197 +708,3 @@ export async function validateAndPriceFoodMultiOrder(dbOrItems, rawItemsOrNothin
     tax: 0,
   };
 }
-
-export const ITEM_IMAGE_MAP = {
-  food_bf_01: {
-    image: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&w=600&q=80',
-    description: 'Steamed rice idlis dipped in hot aromatic sambar with coconut chutney and podi.'
-  },
-  food_bf_02: {
-    image: 'https://images.unsplash.com/photo-1668236543090-82eba5ee5976?auto=format&fit=crop&w=600&q=80',
-    description: 'Golden roasted fermented crepe rolled with spiced potato bhaji and fresh chutneys.'
-  },
-  food_bf_03: {
-    image: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=600&q=80',
-    description: 'Hot puffed whole wheat pooris served with mild spiced onion-potato sagu.'
-  },
-  food_vm_01: {
-    image: 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?auto=format&fit=crop&w=600&q=80',
-    description: 'Steamed rice, sambar, rasam, curd, seasonal veg curry, papad and pickle.'
-  },
-  food_vm_02: {
-    image: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=600&q=80',
-    description: 'Paneer butter masala, dal makhani, 2 phulkas, jeera rice, salad and gulab jamun.'
-  },
-  food_vc_01: {
-    image: 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=600&q=80',
-    description: 'Fresh cottage cheese simmered in rich buttery tomato cashew gravy.'
-  },
-  food_vc_02: {
-    image: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=600&q=80',
-    description: 'Button mushrooms tossed with bell peppers and roasted ground spices.'
-  },
-  food_vc_03: {
-    image: 'https://images.unsplash.com/photo-1585937421612-70a008356fbe?auto=format&fit=crop&w=600&q=80',
-    description: 'Assorted seasonal vegetables simmered in creamy handi gravy.'
-  },
-  food_cc_01: {
-    image: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?auto=format&fit=crop&w=600&q=80',
-    description: 'Tender chicken pieces cooked in a creamy spiced buttery tomato sauce.'
-  },
-  food_cc_02: {
-    image: 'https://images.unsplash.com/photo-1588166524941-3bf61a9c41db?auto=format&fit=crop&w=600&q=80',
-    description: 'Traditional fiery Andhra style chicken curry infused with curry leaves.'
-  },
-  food_cc_03: {
-    image: 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=600&q=80',
-    description: 'Royal Mughlai chicken preparation with cashew nuts and saffron notes.'
-  },
-  food_fr_01: {
-    image: 'https://images.unsplash.com/photo-1525755662778-989d0524087e?auto=format&fit=crop&w=600&q=80',
-    description: 'Wok tossed basmati rice with scrambled farm eggs, scallions and soy.'
-  },
-  food_fr_02: {
-    image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?auto=format&fit=crop&w=600&q=80',
-    description: 'Fluffy rice wok tossed with shredded spicy chicken, carrots and cabbage.'
-  },
-  food_fr_03: {
-    image: 'https://images.unsplash.com/photo-1512058564366-18510be2db19?auto=format&fit=crop&w=600&q=80',
-    description: 'Spicy Schezwan chilli garlic fried rice with diced garden vegetables.'
-  },
-  food_egg_01: {
-    image: 'https://images.unsplash.com/photo-1525755662778-989d0524087e?auto=format&fit=crop&w=600&q=80',
-    description: 'Fluffy double egg masala omelette with onions, green chillies and coriander.'
-  },
-  food_egg_02: {
-    image: 'https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=600&q=80',
-    description: 'Spicy scrambled eggs with roasted tomato, onion tadka and pav spices.'
-  },
-  food_nd_01: {
-    image: 'https://images.unsplash.com/photo-1585032226651-759b368d7246?auto=format&fit=crop&w=600&q=80',
-    description: 'Wok-tossed noodles with shredded bell peppers, cabbage and light soya sauce.'
-  },
-  food_nd_02: {
-    image: 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?auto=format&fit=crop&w=600&q=80',
-    description: 'Spicy noodles tossed with tender chicken chunks and in-house Schezwan sauce.'
-  },
-  food_pz_01: {
-    image: 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?auto=format&fit=crop&w=600&q=80',
-    description: 'Stone-crust base topped with rich marinara sauce and 100% mozzarella.'
-  },
-  food_pz_02: {
-    image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=600&q=80',
-    description: 'Smoky BBQ chicken chunks, diced red onions and mozzarella cheese.'
-  },
-  food_rl_01: {
-    image: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=600&q=80',
-    description: 'Flaky parotta roll stuffed with marinated grilled chicken and mint mayo.'
-  },
-  food_rl_02: {
-    image: 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=600&q=80',
-    description: 'Double egg coated layered parotta rolled with juicy spiced chicken pieces.'
-  },
-  food_ff_01: {
-    image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80',
-    description: 'Golden spiced potato-herb patty with crunchy lettuce and cream mayo in a brioche bun.'
-  },
-  food_ff_02: {
-    image: 'https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=600&q=80',
-    description: 'Crispy fried chicken fillet stacked with zesty coleslaw and cheese slice.'
-  },
-  food_sn_01: {
-    image: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?auto=format&fit=crop&w=600&q=80',
-    description: 'Traditional decoction brewed filter coffee served piping hot.'
-  },
-  food_sn_02: {
-    image: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?auto=format&fit=crop&w=600&q=80',
-    description: 'Kadak ginger cardamon milk tea brewed fresh on order.'
-  }
-};
-
-export function getFoodImageFallback(itemId, categoryId) {
-  if (itemId && ITEM_IMAGE_MAP[itemId]?.image) {
-    return ITEM_IMAGE_MAP[itemId].image;
-  }
-  switch (categoryId) {
-    case 'breakfast':
-      return 'https://images.unsplash.com/photo-1668236543090-82eba5ee5976?auto=format&fit=crop&w=600&q=80';
-    case 'meals':
-    case 'veg-meals':
-      return 'https://images.unsplash.com/photo-1610057099443-fde8c4d50f91?auto=format&fit=crop&w=600&q=80';
-    case 'chicken-curries':
-      return 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?auto=format&fit=crop&w=600&q=80';
-    case 'veg-curries':
-      return 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=600&q=80';
-    case 'fried-rice':
-      return 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?auto=format&fit=crop&w=600&q=80';
-    case 'noodles':
-      return 'https://images.unsplash.com/photo-1585032226651-759b368d7246?auto=format&fit=crop&w=600&q=80';
-    case 'egg-items':
-      return 'https://images.unsplash.com/photo-1525755662778-989d0524087e?auto=format&fit=crop&w=600&q=80';
-    case 'pizza':
-    case 'fast-food':
-      return 'https://images.unsplash.com/photo-1574071318508-1cdbab80d002?auto=format&fit=crop&w=600&q=80';
-    case 'chicken-rolls':
-      return 'https://images.unsplash.com/photo-1626777552726-4a6b54c97e46?auto=format&fit=crop&w=600&q=80';
-    case 'snacks':
-    case 'snacks-beverages':
-      return 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=600&q=80';
-    default:
-      return 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=600&q=80';
-  }
-}
-
-export async function seedInitialMenuItems(db) {
-  try {
-    const existing = await db.prepare('SELECT COUNT(*) as count FROM food_menu_items').first();
-    const now = Date.now();
-
-    if (existing && existing.count > 0) {
-      // Check if any items have empty image or description and update them
-      const emptyCheck = await db.prepare("SELECT COUNT(*) as count FROM food_menu_items WHERE image IS NULL OR image = ''").first();
-      if (emptyCheck && emptyCheck.count > 0) {
-        const updateStmts = [];
-        for (const [id, meta] of Object.entries(ITEM_IMAGE_MAP)) {
-          updateStmts.push(db.prepare(
-            "UPDATE food_menu_items SET image = ?, description = COALESCE(NULLIF(description, ''), ?), updated_at = ? WHERE id = ? AND (image IS NULL OR image = '')"
-          ).bind(meta.image, meta.description, now, id));
-        }
-        if (updateStmts.length > 0) {
-          await db.batch(updateStmts);
-          console.log(`[FOOD_INIT] Backfilled high-res images and descriptions for existing food items.`);
-        }
-      }
-      return;
-    }
-
-    const stmts = [];
-
-    for (const item of AUTHORITATIVE_FOOD_MENU) {
-      const isMess = item.vendorId === FOOD_VENDORS.COLLEGE_MESS.id;
-      const mealType = isMess ? 'lunch' : (item.categoryId === 'breakfast' ? 'breakfast' : 'all_day');
-      const itemMeta = ITEM_IMAGE_MAP[item.id];
-      const itemImage = (itemMeta?.image) || item.image || getFoodImageFallback(item.id, item.categoryId);
-      const itemDesc = (itemMeta?.description) || item.description || 'Freshly prepared at campus counter.';
-
-      stmts.push(db.prepare(`
-        INSERT OR IGNORE INTO food_menu_items (
-          id, vendor_id, name, description, price, category_id, dietary,
-          image, is_available, stock, meal_type, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 50, ?, ?, ?)
-      `).bind(
-        item.id, item.vendorId, item.name, itemDesc, item.price,
-        item.categoryId, item.dietary, itemImage, mealType, now, now
-      ));
-    }
-
-    if (stmts.length > 0) {
-      await db.batch(stmts);
-      console.log(`[FOOD_INIT] Successfully seeded ${stmts.length} initial food menu items with images into D1.`);
-    }
-  } catch (err) {
-    console.error('Failed to seed food menu items:', err);
-  }
-}
-
-

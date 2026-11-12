@@ -557,6 +557,12 @@ export async function handleGetFoodProducts(request, env, context) {
       params.push(term, term);
     }
 
+    // Filter available only by default
+    if (url.searchParams.get('includeUnavailable') !== 'true') {
+      conditions.push('m.is_available = 1');
+      conditions.push('m.stock > 0');
+    }
+
     // Only active and approved vendors
     conditions.push("(v.status = 'active' OR v.status IS NULL)");
     conditions.push("(v.onboarding_status = 'approved' OR v.onboarding_status IS NULL)");
@@ -667,6 +673,144 @@ export async function handleGetFoodCategories(request, env, context) {
   } catch (err) {
     console.error('Get Food Categories Error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to retrieve food categories', 500);
+  }
+}
+
+/**
+ * Public Food Counters/Vendors List
+ * GET /api/food/vendors
+ */
+export async function handleGetFoodVendors(request, env, context) {
+  try {
+    await ensureFoodTables(env.DB);
+    const rows = await env.DB.prepare(`
+      SELECT id, name, counter_location, contact, status, opening_hours, vendor_type,
+             logo_url, banner_url, onboarding_status, is_accepting_orders, announcement
+      FROM food_vendors
+      WHERE status = 'active' AND (onboarding_status = 'approved' OR onboarding_status IS NULL)
+      ORDER BY name
+    `).all();
+
+    const vendors = (rows.results || []).map(r => ({
+      id: r.id,
+      name: r.name,
+      counterLocation: r.counter_location,
+      contact: r.contact,
+      status: r.status,
+      openingHours: r.opening_hours || '8:00 AM - 10:00 PM',
+      vendorType: r.vendor_type || (r.id === 'vendor_college_mess' ? 'mess' : 'canteen'),
+      image: r.id === 'vendor_college_mess' ? '/images/food/rce_mess_cover.webp' : '/images/food/chopsticks_cover.webp',
+      isAcceptingOrders: r.is_accepting_orders === 1,
+      announcement: r.announcement
+    }));
+
+    return successResponse({ vendors });
+  } catch (err) {
+    console.error('Get Food Vendors Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to retrieve food vendors', 500);
+  }
+}
+
+/**
+ * Public RCE Mess Weekly Schedule
+ * GET /api/food/mess/weekly-menu
+ */
+export async function handleGetFoodMessWeeklyMenu(request, env, context) {
+  try {
+    await ensureFoodTables(env.DB);
+    let rows = await env.DB.prepare(`
+      SELECT * FROM food_mess_weekly_menu WHERE is_active = 1 ORDER BY sort_order ASC
+    `).all().catch(() => ({ results: [] }));
+
+    let menu = (rows.results || []).map(r => {
+      let items = [];
+      try {
+        items = typeof r.items === 'string' ? JSON.parse(r.items) : (r.items || []);
+      } catch {
+        items = (r.items || '').split(',').map(s => s.trim());
+      }
+      return {
+        id: r.id,
+        vendorId: r.vendor_id,
+        day: r.day_of_week === -1 ? 'Monthly Special' : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][r.day_of_week] || r.day_of_week,
+        dayOfWeek: r.day_of_week,
+        title: r.title,
+        items,
+        image: r.image || '/images/food/rce_mess_cover.webp',
+        notes: r.notes,
+        mealTimings: r.meal_timings || 'Lunch: 12:30 PM - 2:30 PM | Dinner: 7:30 PM - 9:30 PM',
+        adminFlagged: Boolean(r.admin_flagged),
+        sortOrder: r.sort_order
+      };
+    });
+
+    // Fallback if table had not been migrated yet
+    if (menu.length === 0) {
+      menu = RCE_MESS_WEEKLY_MENU.map((m, idx) => ({
+        id: `mess_day_${m.day_of_week}`,
+        vendorId: 'vendor_college_mess',
+        day: m.day,
+        dayOfWeek: m.day_of_week,
+        title: m.title,
+        items: m.items,
+        image: '/images/food/rce_mess_cover.webp',
+        notes: m.notes,
+        mealTimings: m.meal_timings,
+        adminFlagged: Boolean(m.admin_flagged),
+        sortOrder: idx
+      }));
+    }
+
+    return successResponse({ menu });
+  } catch (err) {
+    console.error('Get Mess Weekly Menu Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to retrieve weekly mess menu', 500);
+  }
+}
+
+/**
+ * Update RCE Mess Weekly Schedule
+ * PUT /api/food/mess/weekly-menu/:id
+ */
+export async function handleUpdateFoodMessWeeklyMenu(request, env, context, menuId) {
+  try {
+    await ensureFoodTables(env.DB);
+    const body = await request.json();
+    const { title, items, notes, mealTimings, adminFlagged, isActive } = body;
+
+    const existing = await env.DB.prepare('SELECT id FROM food_mess_weekly_menu WHERE id = ?').bind(menuId).first();
+    if (!existing) {
+      return errorResponse('NOT_FOUND', 'Weekly mess menu entry not found', 404);
+    }
+
+    const itemsStr = Array.isArray(items) ? JSON.stringify(items) : (typeof items === 'string' ? items : '[]');
+    const now = Date.now();
+
+    await env.DB.prepare(`
+      UPDATE food_mess_weekly_menu
+      SET title = COALESCE(?, title),
+          items = COALESCE(?, items),
+          notes = COALESCE(?, notes),
+          meal_timings = COALESCE(?, meal_timings),
+          admin_flagged = COALESCE(?, admin_flagged),
+          is_active = COALESCE(?, is_active),
+          updated_at = ?
+      WHERE id = ?
+    `).bind(
+      title !== undefined ? title : null,
+      items !== undefined ? itemsStr : null,
+      notes !== undefined ? notes : null,
+      mealTimings !== undefined ? mealTimings : null,
+      adminFlagged !== undefined ? (adminFlagged ? 1 : 0) : null,
+      isActive !== undefined ? (isActive ? 1 : 0) : null,
+      now,
+      menuId
+    ).run();
+
+    return successResponse({ success: true, message: 'Mess weekly menu updated successfully' });
+  } catch (err) {
+    console.error('Update Mess Weekly Menu Error:', err);
+    return errorResponse('SERVER_ERROR', 'Failed to update weekly mess menu', 500);
   }
 }
 

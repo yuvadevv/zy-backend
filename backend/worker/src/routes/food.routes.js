@@ -43,7 +43,10 @@ import {
   handleVendorImportMenuCSV,
   handleVendorExportMenuCSV,
   handleGetFoodCheckoutById,
-  handleReportFoodOrderIssue
+  handleReportFoodOrderIssue,
+  handleGetFoodVendors,
+  handleGetFoodMessWeeklyMenu,
+  handleUpdateFoodMessWeeklyMenu
 } from './food.js';
 import { verifyAuth } from '../middleware/auth.js';
 import { verifyVendorAuth } from '../middleware/vendorAuth.js';
@@ -127,9 +130,12 @@ async function requireFoodVendorAuth(request, env, context) {
 // ==========================================
 // PUBLIC STUDENT FOOD CATALOGUE ENDPOINTS
 // ==========================================
+foodRouter.get('/vendors', handleGetFoodVendors);
 foodRouter.get('/products', handleGetFoodProducts);
 foodRouter.get('/products/:id', (req, env, ctx) => handleGetFoodProductById(req, env, ctx, req.params.id));
 foodRouter.get('/categories', handleGetFoodCategories);
+foodRouter.get('/mess/weekly-menu', handleGetFoodMessWeeklyMenu);
+foodRouter.put('/mess/weekly-menu/:id', requireFoodVendorAuth, (req, env, ctx) => handleUpdateFoodMessWeeklyMenu(req, env, ctx, req.params.id));
 
 // ==========================================
 // VENDOR OPERATIONS ENDPOINTS (Isolated Data)
