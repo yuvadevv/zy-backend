@@ -877,6 +877,31 @@ export async function handleCreateFoodOrder(request, env, context) {
     const studentId = context.user.id;
     if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
 
+    // Check if food service is locked by administration
+    try {
+      const { results: settingRows } = await env.DB.prepare(
+        "SELECT setting_key, setting_value FROM platform_settings WHERE setting_key IN ('food_service_status', 'food_service_enabled', 'food_service_lock_message')"
+      ).all();
+      const fSettings = {};
+      for (const r of settingRows || []) {
+        try { fSettings[r.setting_key] = JSON.parse(r.setting_value); } catch { fSettings[r.setting_key] = r.setting_value; }
+      }
+      const isProd = env.ENVIRONMENT === 'production' || env.VERCEL_ENV === 'production';
+      let isFoodActive = !isProd;
+      if (fSettings.food_service_enabled !== undefined) {
+        isFoodActive = fSettings.food_service_enabled === true || fSettings.food_service_enabled === 'true';
+      } else if (fSettings.food_service_status !== undefined) {
+        isFoodActive = fSettings.food_service_status === 'active';
+      }
+
+      if (!isFoodActive) {
+        const msg = fSettings.food_service_lock_message || 'Campus Food ordering is currently locked by administration.';
+        return errorResponse('SERVICE_LOCKED', msg, 403);
+      }
+    } catch (checkErr) {
+      console.warn('Food service lock check skipped on error:', checkErr);
+    }
+
     const body = await request.json();
     const { 
       items, 
