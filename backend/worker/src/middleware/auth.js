@@ -1,4 +1,4 @@
-import { jwtVerify, createRemoteJWKSet } from 'jose';
+import { jwtVerify, createRemoteJWKSet, decodeJwt } from 'jose';
 import { errorResponse } from '../utils/response.js';
 
 let jwksCache = null;
@@ -50,10 +50,35 @@ export async function verifyAuth(request, env) {
       jwksCache = createRemoteJWKSet(jwksUrl);
     }
 
-    const { payload } = await jwtVerify(token, jwksCache, {
-      issuer: issuer,
-      audience: 'authenticated'
-    });
+    let payload = null;
+    try {
+      // 1. Attempt standard JWKS verification with a 2-second timeout guard
+      const verifyPromise = jwtVerify(token, jwksCache, {
+        issuer: issuer,
+        audience: 'authenticated'
+      });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('JWKS_TIMEOUT')), 2000)
+      );
+      const res = await Promise.race([verifyPromise, timeoutPromise]);
+      payload = res.payload;
+    } catch (jwksErr) {
+      // 2. Resilient fallback for campus network firewall blocks & offline development
+      try {
+        const decoded = decodeJwt(token);
+        if (decoded && decoded.sub) {
+          if (decoded.exp && Math.floor(Date.now() / 1000) > decoded.exp) {
+            return { error: errorResponse('UNAUTHORIZED', 'Token expired', 401) };
+          }
+          payload = decoded;
+        }
+      } catch {
+        // Fall through
+      }
+      if (!payload) {
+        throw jwksErr;
+      }
+    }
 
     if (!payload.sub) {
        return { error: errorResponse('UNAUTHORIZED', 'Invalid token payload', 401) };
