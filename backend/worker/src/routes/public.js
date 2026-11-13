@@ -80,20 +80,26 @@ export async function handleGetPlatformStatus(request, env) {
     if (cleanWhatsApp && cleanWhatsApp.length === 11 && cleanWhatsApp.startsWith('0')) cleanWhatsApp = cleanWhatsApp.slice(1);
     if (cleanWhatsApp && cleanWhatsApp.length === 10) cleanWhatsApp = '91' + cleanWhatsApp;
 
-    // Food Service Status & Lock
-    const isProd = env.ENVIRONMENT === 'production' || env.VERCEL_ENV === 'production';
-    let foodServiceEnabled = !isProd; // Default: locked on main/production, active on testing/dev
+    // Food Service Status & Lock (Main locked by default, testing allowed by default)
+    let foodServiceEnabled = true;
     if (settings.food_service_enabled !== undefined) {
       foodServiceEnabled = typeof settings.food_service_enabled === 'object'
         ? Boolean(settings.food_service_enabled?.enabled)
         : (settings.food_service_enabled === true || settings.food_service_enabled === 'true');
-    } else if (settings.food_service_status !== undefined) {
-      foodServiceEnabled = settings.food_service_status === 'active';
+    }
+
+    let foodServiceMainLocked = true; // Default: LOCKED on main branch!
+    if (settings.food_service_main_locked !== undefined) {
+      foodServiceMainLocked = typeof settings.food_service_main_locked === 'object'
+        ? Boolean(settings.food_service_main_locked?.enabled)
+        : (settings.food_service_main_locked === true || settings.food_service_main_locked === 'true');
     }
 
     const foodLockMessage = settings.food_service_lock_message ||
       settings.food_service_message ||
       'Campus Food ordering is launching soon! Please check back later.';
+
+    const foodServiceStatus = (!foodServiceEnabled || foodServiceMainLocked) ? 'locked' : 'active';
 
     const publicStatus = {
       maintenance_mode: isMaintenance,
@@ -107,7 +113,9 @@ export async function handleGetPlatformStatus(request, env) {
       terms_pdf_url: settings.terms_pdf_url || null,
       privacy_policy_pdf_url: settings.privacy_policy_pdf_url || null,
       food_service_enabled: foodServiceEnabled,
-      food_service_status: foodServiceEnabled ? 'active' : 'locked',
+      food_service_main_locked: foodServiceMainLocked,
+      food_service_testing_allowed: foodServiceEnabled,
+      food_service_status: foodServiceStatus,
       food_service_lock_message: foodLockMessage,
       service_timings: {
         printing_service_status: settings.printing_service_status || 'active',
@@ -119,8 +127,10 @@ export async function handleGetPlatformStatus(request, env) {
         delivery_service_status: settings.delivery_service_status || 'active',
         delivery_service_start_time: settings.delivery_service_start_time || '09:00 AM',
         delivery_service_end_time: settings.delivery_service_end_time || '06:00 PM',
-        food_service_status: foodServiceEnabled ? 'active' : 'locked',
+        food_service_status: foodServiceStatus,
         food_service_enabled: foodServiceEnabled,
+        food_service_main_locked: foodServiceMainLocked,
+        food_service_testing_allowed: foodServiceEnabled,
         food_service_lock_message: foodLockMessage
       }
     };

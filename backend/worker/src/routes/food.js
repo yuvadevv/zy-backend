@@ -880,22 +880,27 @@ export async function handleCreateFoodOrder(request, env, context) {
     // Check if food service is locked by administration
     try {
       const { results: settingRows } = await env.DB.prepare(
-        "SELECT setting_key, setting_value FROM platform_settings WHERE setting_key IN ('food_service_status', 'food_service_enabled', 'food_service_lock_message')"
+        "SELECT setting_key, setting_value FROM platform_settings WHERE setting_key IN ('food_service_status', 'food_service_enabled', 'food_service_main_locked', 'food_service_lock_message')"
       ).all();
       const fSettings = {};
       for (const r of settingRows || []) {
         try { fSettings[r.setting_key] = JSON.parse(r.setting_value); } catch { fSettings[r.setting_key] = r.setting_value; }
       }
-      const isProd = env.ENVIRONMENT === 'production' || env.VERCEL_ENV === 'production';
-      let isFoodActive = !isProd;
-      if (fSettings.food_service_enabled !== undefined) {
-        isFoodActive = fSettings.food_service_enabled === true || fSettings.food_service_enabled === 'true';
-      } else if (fSettings.food_service_status !== undefined) {
-        isFoodActive = fSettings.food_service_status === 'active';
+
+      const isEnabled = fSettings.food_service_enabled === undefined || fSettings.food_service_enabled === true || fSettings.food_service_enabled === 'true';
+      const isMainLocked = fSettings.food_service_main_locked === undefined || fSettings.food_service_main_locked === true || fSettings.food_service_main_locked === 'true';
+
+      if (!isEnabled) {
+        const msg = fSettings.food_service_lock_message || 'Campus Food ordering is currently locked by administration.';
+        return errorResponse('SERVICE_LOCKED', msg, 403);
       }
 
-      if (!isFoodActive) {
-        const msg = fSettings.food_service_lock_message || 'Campus Food ordering is currently locked by administration.';
+      // Check if client is coming from main branch
+      const origin = (request.headers.get('origin') || request.headers.get('referer') || '').toLowerCase();
+      const isTestingClient = origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('git-testing') || origin.includes('testing');
+      
+      if (isMainLocked && !isTestingClient) {
+        const msg = fSettings.food_service_lock_message || 'Campus Food ordering is launching soon! Please check back later.';
         return errorResponse('SERVICE_LOCKED', msg, 403);
       }
     } catch (checkErr) {
