@@ -47,13 +47,16 @@ export async function handlePostOrder(request, env, context) {
 
     const branchCode = studentData.branch_code || '00';
 
-    // 2. Fetch pricing, launch pricing, and delivery settings
-    const settingsResult = await env.DB.prepare(`SELECT setting_key, setting_value FROM platform_settings WHERE setting_key IN ('pricing_settings', 'launch_pricing_settings', 'delivery_settings', 'delivery_calendar')`).all();
+    // 2. Fetch pricing, launch pricing, delivery settings, and order acceptance status
+    const settingsResult = await env.DB.prepare(`SELECT setting_key, setting_value FROM platform_settings WHERE setting_key IN ('pricing_settings', 'launch_pricing_settings', 'delivery_settings', 'delivery_calendar', 'orders_enabled', 'printing_orders_enabled', 'orders_paused_message')`).all();
     
     let pricingSettings = null;
     let launchPricing = null;
     let deliverySettings = null;
     let deliveryCalendar = [];
+    let ordersEnabled = true;
+    let printingOrdersEnabled = true;
+    let ordersPausedMessage = 'We are temporarily not accepting new orders right now. Please check back soon!';
 
     for (const row of settingsResult.results) {
         try {
@@ -61,7 +64,23 @@ export async function handlePostOrder(request, env, context) {
             if (row.setting_key === 'launch_pricing_settings') launchPricing = JSON.parse(row.setting_value);
             if (row.setting_key === 'delivery_settings') deliverySettings = JSON.parse(row.setting_value);
             if (row.setting_key === 'delivery_calendar') deliveryCalendar = JSON.parse(row.setting_value);
-        } catch(e) {}
+            if (row.setting_key === 'orders_enabled') {
+              ordersEnabled = row.setting_value === true || row.setting_value === 'true' || JSON.parse(row.setting_value) === true;
+            }
+            if (row.setting_key === 'printing_orders_enabled') {
+              printingOrdersEnabled = row.setting_value === true || row.setting_value === 'true' || JSON.parse(row.setting_value) === true;
+            }
+            if (row.setting_key === 'orders_paused_message') {
+              ordersPausedMessage = row.setting_value;
+            }
+        } catch(e) {
+            if (row.setting_key === 'orders_paused_message') ordersPausedMessage = row.setting_value;
+        }
+    }
+
+    // Stop Orders Check: reject if orders are turned off in settings
+    if (!ordersEnabled || !printingOrdersEnabled) {
+      return errorResponse('ORDERS_STOPPED', ordersPausedMessage, 403);
     }
 
     const validatedItems = [];

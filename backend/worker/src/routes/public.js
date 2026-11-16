@@ -101,6 +101,31 @@ export async function handleGetPlatformStatus(request, env) {
 
     const foodServiceStatus = (!foodServiceEnabled || foodServiceMainLocked) ? 'locked' : 'active';
 
+    // Order Acceptance & Stop Orders (Global & Service-Level)
+    let ordersEnabled = true;
+    if (settings.orders_enabled !== undefined) {
+      ordersEnabled = typeof settings.orders_enabled === 'object'
+        ? Boolean(settings.orders_enabled?.enabled)
+        : (settings.orders_enabled === true || settings.orders_enabled === 'true');
+    }
+
+    let printingOrdersEnabled = true;
+    if (settings.printing_orders_enabled !== undefined) {
+      printingOrdersEnabled = typeof settings.printing_orders_enabled === 'object'
+        ? Boolean(settings.printing_orders_enabled?.enabled)
+        : (settings.printing_orders_enabled === true || settings.printing_orders_enabled === 'true');
+    }
+
+    let foodOrdersEnabled = true;
+    if (settings.food_orders_enabled !== undefined) {
+      foodOrdersEnabled = typeof settings.food_orders_enabled === 'object'
+        ? Boolean(settings.food_orders_enabled?.enabled)
+        : (settings.food_orders_enabled === true || settings.food_orders_enabled === 'true');
+    }
+
+    const ordersPausedMessage = settings.orders_paused_message ||
+      'We are temporarily not accepting new orders right now. Please check back soon!';
+
     const publicStatus = {
       maintenance_mode: isMaintenance,
       maintenance_message: settings.global_banner?.text || 'Platform is under maintenance. Please check back later.',
@@ -112,13 +137,17 @@ export async function handleGetPlatformStatus(request, env) {
       app_version: settings.app_version || 'APP VERSION V1.0.0',
       terms_pdf_url: settings.terms_pdf_url || null,
       privacy_policy_pdf_url: settings.privacy_policy_pdf_url || null,
+      orders_enabled: ordersEnabled,
+      printing_orders_enabled: printingOrdersEnabled,
+      food_orders_enabled: foodOrdersEnabled,
+      orders_paused_message: ordersPausedMessage,
       food_service_enabled: foodServiceEnabled,
       food_service_main_locked: foodServiceMainLocked,
       food_service_testing_allowed: foodServiceEnabled,
       food_service_status: foodServiceStatus,
       food_service_lock_message: foodLockMessage,
       service_timings: {
-        printing_service_status: settings.printing_service_status || 'active',
+        printing_service_status: (!ordersEnabled || !printingOrdersEnabled) ? 'paused' : (settings.printing_service_status || 'active'),
         printing_service_start_time: settings.printing_service_start_time || '09:00 AM',
         printing_service_end_time: settings.printing_service_end_time || '06:00 PM',
         pickup_service_status: settings.pickup_service_status || 'active',
@@ -127,6 +156,10 @@ export async function handleGetPlatformStatus(request, env) {
         delivery_service_status: settings.delivery_service_status || 'active',
         delivery_service_start_time: settings.delivery_service_start_time || '09:00 AM',
         delivery_service_end_time: settings.delivery_service_end_time || '06:00 PM',
+        orders_enabled: ordersEnabled,
+        printing_orders_enabled: printingOrdersEnabled,
+        food_orders_enabled: foodOrdersEnabled,
+        orders_paused_message: ordersPausedMessage,
         food_service_status: foodServiceStatus,
         food_service_enabled: foodServiceEnabled,
         food_service_main_locked: foodServiceMainLocked,

@@ -877,14 +877,22 @@ export async function handleCreateFoodOrder(request, env, context) {
     const studentId = context.user.id;
     if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
 
-    // Check if food service is locked by administration
+    // Check if food service or orders are locked/stopped by administration
     try {
       const { results: settingRows } = await env.DB.prepare(
-        "SELECT setting_key, setting_value FROM platform_settings WHERE setting_key IN ('food_service_status', 'food_service_enabled', 'food_service_main_locked', 'food_service_lock_message')"
+        "SELECT setting_key, setting_value FROM platform_settings WHERE setting_key IN ('food_service_status', 'food_service_enabled', 'food_service_main_locked', 'food_service_lock_message', 'orders_enabled', 'food_orders_enabled', 'orders_paused_message')"
       ).all();
       const fSettings = {};
       for (const r of settingRows || []) {
         try { fSettings[r.setting_key] = JSON.parse(r.setting_value); } catch { fSettings[r.setting_key] = r.setting_value; }
+      }
+
+      // 1. Check Stop Orders setting (App-wide order pause)
+      const ordersEnabled = fSettings.orders_enabled === undefined || fSettings.orders_enabled === true || fSettings.orders_enabled === 'true';
+      const foodOrdersEnabled = fSettings.food_orders_enabled === undefined || fSettings.food_orders_enabled === true || fSettings.food_orders_enabled === 'true';
+      if (!ordersEnabled || !foodOrdersEnabled) {
+        const msg = fSettings.orders_paused_message || 'We are temporarily not accepting new orders right now. Please check back soon!';
+        return errorResponse('ORDERS_STOPPED', msg, 403);
       }
 
       const isEnabled = fSettings.food_service_enabled === undefined || fSettings.food_service_enabled === true || fSettings.food_service_enabled === 'true';
