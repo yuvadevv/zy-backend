@@ -67,7 +67,9 @@ export async function verifyAuth(request, env) {
       try {
         const decoded = decodeJwt(token);
         if (decoded && decoded.sub) {
-          if (decoded.exp && Math.floor(Date.now() / 1000) > decoded.exp) {
+          // Allow 24-hour grace window during network firewall blocks or auth server outages
+          const graceWindow = 86400; // 24 hours
+          if (decoded.exp && Math.floor(Date.now() / 1000) > (decoded.exp + graceWindow)) {
             return { error: errorResponse('UNAUTHORIZED', 'Token expired', 401) };
           }
           payload = decoded;
