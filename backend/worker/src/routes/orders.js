@@ -1,6 +1,7 @@
 import { errorResponse, successResponse } from '../utils/response.js';
 import { calculateManualPrice, calculateOrderTotal, calculateOfferDiscount } from '../services/pricingService.js';
 import { calculateEstimatedDelivery } from '../services/deliveryService.js';
+import { verifyStudentAcademicProfile } from '../services/studentService.js';
 
 // Generate BLZ-[YEAR]-[BRANCH_CODE]-[SEQ]
 export async function generateOrderId(db, branchCode) {
@@ -25,6 +26,12 @@ export async function handlePostOrder(request, env, context) {
   try {
     const studentId = context.user.id;
     if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
+
+    // 0. Strict Server-side Academic Profile Verification
+    const academicVerification = await verifyStudentAcademicProfile(env.DB, studentId);
+    if (!academicVerification.valid) {
+      return errorResponse('PROFILE_COMPLETION_REQUIRED', academicVerification.message, 403);
+    }
 
     const body = await request.json();
     const { items, deliveryDetails, couponCode } = body;

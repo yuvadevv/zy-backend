@@ -26,16 +26,23 @@ function buildOrderDTO(o, items = [], customFiles = []) {
       name: o.studentName || 'Not provided',
       rollNumber: o.rollNumber || 'Not provided',
       email: o.studentEmail || 'Not provided',
-      phone: o.studentPhone || 'Not provided'
+      phone: o.studentPhone || 'Not provided',
+      blockName: o.blockName || 'N/A',
+      classroomName: o.classroomName || 'N/A'
     },
     academic: {
       branchId: o.branch_id,
       branchCode: o.branchCode || 'N/A',
+      branchName: o.branchName || o.branchCode || 'N/A',
       yearId: o.study_year_id,
       yearLabel: o.yearLabel || 'N/A',
       semesterId: o.semester_id,
       semesterLabel: o.semesterLabel || 'N/A',
-      section: o.sectionName || 'N/A'
+      section: o.sectionName || o.section || 'N/A',
+      blockId: o.blockId || o.block_id,
+      blockName: o.blockName || 'N/A',
+      classroomId: o.classroomId || o.classroom_id,
+      classroomName: o.classroomName || 'N/A'
     },
     items: items,
     customFiles: customFiles,
@@ -48,8 +55,8 @@ function buildOrderDTO(o, items = [], customFiles = []) {
     },
     delivery: {
       type: o.delivery_type,
-      building: o.delivery_building,
-      room: o.delivery_room
+      building: o.delivery_building || o.blockName || '-',
+      room: o.delivery_room || o.classroomName || '-'
     },
     vendorId: o.vendor_id
   };
@@ -78,6 +85,11 @@ export async function getOrders(db, params) {
       ay.label as yearLabel,
       sem.label as semesterLabel,
       sec.name as sectionName,
+      b.name as branchName,
+      s.block_id as blockId,
+      bl.name as blockName,
+      s.classroom_id as classroomId,
+      cl.name as classroomName,
       (
         SELECT json_group_array(json_object(
           'manualId', oi.manual_id,
@@ -113,6 +125,8 @@ export async function getOrders(db, params) {
     LEFT JOIN academic_years ay ON s.study_year_id = ay.id
     LEFT JOIN semesters sem ON s.semester_id = sem.id
     LEFT JOIN sections sec ON s.section = sec.id
+    LEFT JOIN blocks bl ON s.block_id = bl.id
+    LEFT JOIN classrooms cl ON s.classroom_id = cl.id
     WHERE o.status != 'payment_pending'
   `;
   
@@ -269,6 +283,11 @@ export async function getOrderDetails(db, publicOrderId, vendorId = null) {
       ay.label as yearLabel,
       sem.label as semesterLabel,
       sec.name as sectionName,
+      b.name as branchName,
+      s.block_id as blockId,
+      bl.name as blockName,
+      s.classroom_id as classroomId,
+      cl.name as classroomName,
       p.status as paymentStatus,
       p.provider as paymentProvider,
       p.provider_order_id as paymentProviderOrderId
@@ -278,6 +297,8 @@ export async function getOrderDetails(db, publicOrderId, vendorId = null) {
     LEFT JOIN academic_years ay ON s.study_year_id = ay.id
     LEFT JOIN semesters sem ON s.semester_id = sem.id
     LEFT JOIN sections sec ON s.section = sec.id
+    LEFT JOIN blocks bl ON s.block_id = bl.id
+    LEFT JOIN classrooms cl ON s.classroom_id = cl.id
     LEFT JOIN payments p ON o.internal_id = p.order_id AND p.status = 'paid'
     WHERE o.public_id = ?
   `;
@@ -899,14 +920,18 @@ export async function getStudentFullDetails(db, studentId) {
     SELECT s.id, s.name, s.roll_number, s.phone, s.email,
            s.college_id, s.branch_id, s.study_year_id as year, s.semester_id as semester, s.section,
            s.account_status, s.created_at, s.updated_at, s.last_login_at, s.last_active_at,
+           s.avatar_url, s.academic_profile_completed, s.block_id, s.classroom_id,
            c.name as college_name, b.name as branch_name,
-           ay.label as year_label, sem.label as semester_label, sec.name as section_name
+           ay.label as year_label, sem.label as semester_label, sec.name as section_name,
+           bl.name as block_name, cl.name as classroom_name
     FROM students s
     LEFT JOIN colleges c ON s.college_id = c.id
     LEFT JOIN branches b ON s.branch_id = b.id
     LEFT JOIN academic_years ay ON s.study_year_id = ay.id
     LEFT JOIN semesters sem ON s.semester_id = sem.id
     LEFT JOIN sections sec ON s.section = sec.id
+    LEFT JOIN blocks bl ON s.block_id = bl.id
+    LEFT JOIN classrooms cl ON s.classroom_id = cl.id
     WHERE s.id = ?
   `;
   const student = await db.prepare(studentQuery).bind(studentId).first();

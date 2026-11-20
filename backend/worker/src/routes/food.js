@@ -7,7 +7,7 @@ import {
   getFoodImageFallback, 
   ITEM_IMAGE_MAP 
 } from '../config/foodMenu.js';
-import { getStudentByUserId } from '../services/studentService.js';
+import { getStudentByUserId, verifyStudentAcademicProfile } from '../services/studentService.js';
 import { PaymentProvider } from '../services/paymentProvider.js';
 
 let foodTablesInitialized = false;
@@ -876,6 +876,12 @@ export async function handleCreateFoodOrder(request, env, context) {
     await ensureFoodTables(env.DB);
     const studentId = context.user.id;
     if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
+
+    // Strict Server-side Academic Profile Verification
+    const academicVerification = await verifyStudentAcademicProfile(env.DB, studentId);
+    if (!academicVerification.valid) {
+      return errorResponse('PROFILE_COMPLETION_REQUIRED', academicVerification.message, 403);
+    }
 
     // Check if food service or orders are locked/stopped by administration
     try {
