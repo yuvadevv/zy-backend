@@ -1,6 +1,7 @@
 import { errorResponse, successResponse } from '../utils/response.js';
 import { createPayment, getPaymentByOrderId, verifyDevelopmentPayment, markPaymentPaid } from '../services/paymentService.js';
 import { PaymentProvider } from '../services/paymentProvider.js';
+import { sendTransactionalPushToStudent } from './pushNotifications.js';
 
 export async function handleCreatePayment(request, env, context) {
   try {
@@ -411,6 +412,18 @@ export async function handlePaymentWebhook(request, env) {
             SET upload_status = 'READY', is_temporary = 0, updated_at = ? 
             WHERE order_id = ? AND is_deleted = 0
           `).bind(Date.now(), payment.order_id).run();
+
+          // Push notification for printing order
+          if (order && order.student_id) {
+            sendTransactionalPushToStudent(env, {
+              studentId: order.student_id,
+              title: 'Print Order Paid 📄',
+              body: `Your printing order #${order.public_id} is paid and queued for printing.`,
+              actionUrl: `/app/orders/${order.public_id}`,
+              category: 'order_updates',
+              data: { orderId: order.public_id, type: 'printing' }
+            }).catch(() => {});
+          }
         }
 
         // Reconcile Food Checkouts & Child Orders if applicable

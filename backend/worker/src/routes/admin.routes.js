@@ -30,6 +30,12 @@ import {
   handlePatchNotification,
   handleDeleteNotification
 } from './admin/notifications.js';
+import {
+  handleGetAudienceCount,
+  handleAdminBroadcast,
+  handleAdminGetCampaigns,
+  handleAdminGetCampaignById
+} from './pushNotifications.js';
 import { handleGetRoles, handleGetPermissions } from './admin/roles.js';
 import { handleGetTeam, handlePostTeamMember } from './admin/team.js';
 import { 
@@ -125,6 +131,15 @@ adminRouter.delete('/notifications/:id', async (req, env, ctx) => {
   const url = new URL(req.url);
   const id = url.pathname.split('/')[4];
   return handleDeleteNotification(req, env, ctx, id);
+});
+
+// Push Notification Broadcast Center
+adminRouter.get('/notifications/broadcast/audience-count', handleGetAudienceCount);
+adminRouter.post('/notifications/broadcast', handleAdminBroadcast);
+adminRouter.get('/notifications/broadcast/campaigns', handleAdminGetCampaigns);
+adminRouter.get('/notifications/broadcast/campaigns/:id', (req, env, ctx) => {
+  const id = req.params?.id || new URL(req.url).pathname.split('/').pop();
+  return handleAdminGetCampaignById(req, env, ctx, id);
 });
 
 // Orders

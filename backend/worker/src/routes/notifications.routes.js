@@ -1,10 +1,28 @@
 import { Router } from '../core/Router.js';
 import { verifyAuth } from '../middleware/auth.js';
+import { verifyAdminAuth } from '../middleware/adminAuth.js';
 import { successResponse, errorResponse } from '../utils/response.js';
+import {
+  handlePushSubscribe,
+  handlePushUnsubscribe,
+  handleGetPushPreferences,
+  handleUpdatePushPreferences,
+  handleGetAudienceCount,
+  handleAdminBroadcast,
+  handleAdminGetCampaigns,
+  handleAdminGetCampaignById
+} from './pushNotifications.js';
 
 export const notificationsRouter = new Router();
 
 notificationsRouter.use(async (request, env, context) => {
+  const url = new URL(request.url);
+  if (url.pathname.includes('/admin/')) {
+    const adminRes = await verifyAdminAuth(request, env);
+    if (adminRes.error) return adminRes.error;
+    context.admin = adminRes.context.admin;
+    return;
+  }
   const authRes = await verifyAuth(request, env);
   if (authRes.error) return authRes.error;
   context.user = authRes.context.user;
@@ -105,4 +123,19 @@ notificationsRouter.patch('/read-all', async (request, env, context) => {
     console.error('Mark All Read Error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to mark all read', 500);
   }
+});
+
+// Student Push Notifications
+notificationsRouter.post('/push/subscribe', handlePushSubscribe);
+notificationsRouter.post('/push/unsubscribe', handlePushUnsubscribe);
+notificationsRouter.get('/push/preferences', handleGetPushPreferences);
+notificationsRouter.put('/push/preferences', handleUpdatePushPreferences);
+
+// Admin Broadcast Endpoints (Aliased under /api/notifications/admin/*)
+notificationsRouter.get('/admin/audience-count', handleGetAudienceCount);
+notificationsRouter.post('/admin/broadcast', handleAdminBroadcast);
+notificationsRouter.get('/admin/campaigns', handleAdminGetCampaigns);
+notificationsRouter.get('/admin/campaigns/:id', (req, env, ctx) => {
+  const id = req.params?.id || new URL(req.url).pathname.split('/').pop();
+  return handleAdminGetCampaignById(req, env, ctx, id);
 });

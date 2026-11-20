@@ -9,6 +9,7 @@ import {
 } from '../config/foodMenu.js';
 import { getStudentByUserId, verifyStudentAcademicProfile } from '../services/studentService.js';
 import { PaymentProvider } from '../services/paymentProvider.js';
+import { sendTransactionalPushToStudent } from './pushNotifications.js';
 
 let foodTablesInitialized = false;
 let foodTablesInitPromise = null;
@@ -1905,6 +1906,36 @@ export async function handleVendorUpdateOrderStatus(request, env, context, order
       fromStatus: currStatus,
       toStatus: targetStatus,
     });
+
+    // Push notification to student on status change
+    if (currStatus !== targetStatus && order.student_id) {
+      const destinationUrl = `/app/campus-food/orders/${order.checkout_id || order.id}`;
+      let title = 'Order Update';
+      let msg = `Your food order #${order.order_number} status changed to ${targetStatus}.`;
+
+      if (targetStatus === 'preparing') {
+        title = 'Kitchen Preparing 👨‍🍳';
+        msg = `Your food order #${order.order_number} is being prepared at the counter.`;
+      } else if (targetStatus === 'ready_for_pickup') {
+        title = 'Your Order Is Ready! 🔔';
+        msg = `Order #${order.order_number} (Token: ${order.token_number}) is ready for pickup!`;
+      } else if (targetStatus === 'collected') {
+        title = 'Order Collected ✅';
+        msg = `Thank you for dining with BLINTZY! Enjoy your meal.`;
+      } else if (targetStatus === 'cancelled') {
+        title = 'Order Cancelled ❌';
+        msg = `Your food order #${order.order_number} has been cancelled.`;
+      }
+
+      sendTransactionalPushToStudent(env, {
+        studentId: order.student_id,
+        title,
+        body: msg,
+        actionUrl: destinationUrl,
+        category: 'order_updates',
+        data: { orderId: order.id, orderNumber: order.order_number, status: targetStatus }
+      }).catch((e) => console.warn('[Push Notification Error]:', e.message));
+    }
 
     return successResponse({
       success: true,
