@@ -11,74 +11,32 @@ import { getStudentByUserId, verifyStudentAcademicProfile } from '../services/st
 import { PaymentProvider } from '../services/paymentProvider.js';
 
 let foodTablesInitialized = false;
+let foodTablesInitPromise = null;
+
+// High-performance in-memory catalogue cache for peak lunch/dinner traffic bursts
+const productsCache = new Map();
+const PRODUCTS_CACHE_TTL = 30000; // 30 seconds
+
+export function invalidateFoodProductsCache() {
+  productsCache.clear();
+}
 
 export async function ensureFoodTables(db) {
-  try {
-    // 10. Ensure food_checkouts table exists (Unified Multi-Counter Sessions)
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS food_checkouts (
-        id TEXT PRIMARY KEY,
-        checkout_number TEXT UNIQUE NOT NULL,
-        student_id TEXT NOT NULL,
-        student_name TEXT,
-        student_phone TEXT,
-        payment_method TEXT NOT NULL,
-        payment_status TEXT NOT NULL,
-        subtotal REAL NOT NULL,
-        grand_total REAL NOT NULL,
-        idempotency_key TEXT UNIQUE,
-        razorpay_order_id TEXT,
-        razorpay_payment_id TEXT,
-        order_count INTEGER NOT NULL DEFAULT 1,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      )
-    `).run();
-
-    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_student ON food_checkouts(student_id)`).run();
-    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_number ON food_checkouts(checkout_number)`).run();
-    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_checkouts_idemp ON food_checkouts(idempotency_key)`).run();
-
-    // 11. Ensure food_order_issues exists (Student Help & Support)
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS food_order_issues (
-        id TEXT PRIMARY KEY,
-        order_id TEXT NOT NULL,
-        order_number TEXT,
-        student_id TEXT NOT NULL,
-        issue_type TEXT NOT NULL,
-        description TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'open',
-        resolution_notes TEXT,
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      )
-    `).run();
-    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_issues_order ON food_order_issues(order_id)`).run();
-    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_food_issues_student ON food_order_issues(student_id)`).run();
-
-    // Migration columns for multi-counter orders
-    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN checkout_id TEXT").run(); } catch {}
-    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN checkout_number TEXT").run(); } catch {}
-    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN cancelled_reason TEXT").run(); } catch {}
-    try { await db.prepare("ALTER TABLE food_orders ADD COLUMN cancelled_at INTEGER").run(); } catch {}
-    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_food_orders_checkout ON food_orders(checkout_id)").run(); } catch {}
-  } catch (schemaErr) {
-    console.error('Error ensuring food checkout schema:', schemaErr);
-  }
-
   if (foodTablesInitialized) return;
-  try {
-    const probe = await db.prepare("SELECT COUNT(*) as count FROM food_menu_items").first();
-    if (probe !== undefined && probe !== null) {
-      await ensureVendorPlatformTables(db);
-      foodTablesInitialized = true;
-      await seedInitialMenuItems(db);
-      return;
+  if (foodTablesInitPromise) return foodTablesInitPromise;
+
+  foodTablesInitPromise = (async () => {
+    try {
+      const probe = await db.prepare("SELECT COUNT(*) as count FROM food_menu_items").first();
+      if (probe !== undefined && probe !== null) {
+        await ensureVendorPlatformTables(db);
+        foodTablesInitialized = true;
+        await seedInitialMenuItems(db);
+        return;
+      }
+    } catch {
+      // Tables don't exist yet, proceed with creation below
     }
-  } catch {
-    // Tables don't exist yet, proceed with creation below
-  }
   try {
     // 1. Food Orders Table
     await db.prepare(`
@@ -401,7 +359,12 @@ export async function ensureFoodTables(db) {
     foodTablesInitialized = true;
   } catch (err) {
     console.error('Failed to initialize food order & vendor tables:', err);
+  } finally {
+    foodTablesInitPromise = null;
   }
+})();
+
+return foodTablesInitPromise;
 }
 
 // Helper: Resolve & Validate Vendor Identity (Security Enforced: Context Authoritative)
@@ -531,6 +494,15 @@ export async function handleGetFoodProducts(request, env, context) {
     const categoryId = url.searchParams.get('categoryId');
     const dietary = url.searchParams.get('dietary');
     const search = url.searchParams.get('search');
+    const isDefaultQuery = !search && !url.searchParams.get('includeUnavailable');
+    const cacheKey = `${vendorId || 'all'}_${categoryId || 'all'}_${dietary || 'all'}`;
+
+    if (isDefaultQuery) {
+      const cached = productsCache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp < PRODUCTS_CACHE_TTL)) {
+        return successResponse(cached.data);
+      }
+    }
 
     let conditions = ['1=1'];
     let params = [];
@@ -606,7 +578,12 @@ export async function handleGetFoodProducts(request, env, context) {
       };
     });
 
-    return successResponse({ products, total: products.length });
+    const responsePayload = { products, total: products.length };
+    if (isDefaultQuery) {
+      productsCache.set(cacheKey, { timestamp: Date.now(), data: responsePayload });
+    }
+
+    return successResponse(responsePayload);
   } catch (err) {
     console.error('Get Food Products Error:', err);
     return errorResponse('SERVER_ERROR', 'Failed to retrieve food products', 500);
@@ -1153,6 +1130,7 @@ export async function handleCreateFoodOrder(request, env, context) {
 
     try {
       await env.DB.batch(statements);
+      invalidateFoodProductsCache();
     } catch (batchErr) {
       // Restore reserved stock if database batch fails
       for (const resItem of reservedItems) {
@@ -1365,17 +1343,25 @@ export async function handleGetFoodOrders(request, env, context) {
     const ordersResult = await env.DB.prepare(querySql).bind(...params).all();
     const ordersList = ordersResult.results || [];
 
-    // Attach items to each order
-    const populatedOrders = [];
-    for (const ord of ordersList) {
+    // Batch fetch items for all orders in a single database roundtrip
+    let populatedOrders = [];
+    if (ordersList.length > 0) {
+      const orderIds = ordersList.map((o) => o.id);
+      const placeholders = orderIds.map(() => '?').join(',');
       const itemsRes = await env.DB.prepare(`
-        SELECT * FROM food_order_items WHERE order_id = ? ORDER BY created_at ASC
-      `).bind(ord.id).all();
+        SELECT * FROM food_order_items WHERE order_id IN (${placeholders}) ORDER BY created_at ASC
+      `).bind(...orderIds).all();
 
-      populatedOrders.push({
+      const itemsByOrderId = {};
+      for (const itm of itemsRes.results || []) {
+        if (!itemsByOrderId[itm.order_id]) itemsByOrderId[itm.order_id] = [];
+        itemsByOrderId[itm.order_id].push(itm);
+      }
+
+      populatedOrders = ordersList.map((ord) => ({
         ...ord,
-        items: itemsRes.results || [],
-      });
+        items: itemsByOrderId[ord.id] || [],
+      }));
     }
 
     return successResponse({ orders: populatedOrders, total: populatedOrders.length });
@@ -1418,10 +1404,25 @@ export async function handleGetFoodOrderById(request, env, context, id) {
           SELECT * FROM food_orders WHERE checkout_id = ? AND student_id = ? ORDER BY created_at ASC
         `).bind(order.checkout_id, studentId).all();
 
+        const sibList = siblings.results || [];
         childOrders = [];
-        for (const sib of siblings.results || []) {
-          const sibItems = await env.DB.prepare(`SELECT * FROM food_order_items WHERE order_id = ?`).bind(sib.id).all();
-          childOrders.push({ ...sib, items: sibItems.results || [] });
+        if (sibList.length > 0) {
+          const sibIds = sibList.map((s) => s.id);
+          const placeholders = sibIds.map(() => '?').join(',');
+          const sibItemsRes = await env.DB.prepare(`
+            SELECT * FROM food_order_items WHERE order_id IN (${placeholders}) ORDER BY created_at ASC
+          `).bind(...sibIds).all();
+
+          const sibItemsByOrderId = {};
+          for (const item of sibItemsRes.results || []) {
+            if (!sibItemsByOrderId[item.order_id]) sibItemsByOrderId[item.order_id] = [];
+            sibItemsByOrderId[item.order_id].push(item);
+          }
+
+          childOrders = sibList.map((sib) => ({
+            ...sib,
+            items: sibItemsByOrderId[sib.id] || [],
+          }));
         }
       }
 
@@ -1446,10 +1447,25 @@ export async function handleGetFoodOrderById(request, env, context, id) {
         SELECT * FROM food_orders WHERE checkout_id = ? AND student_id = ? ORDER BY created_at ASC
       `).bind(checkout.id, studentId).all();
 
-      const ordersWithItems = [];
-      for (const ord of linkedOrders.results || []) {
-        const itms = await env.DB.prepare(`SELECT * FROM food_order_items WHERE order_id = ?`).bind(ord.id).all();
-        ordersWithItems.push({ ...ord, items: itms.results || [] });
+      const ordList = linkedOrders.results || [];
+      let ordersWithItems = [];
+      if (ordList.length > 0) {
+        const ordIds = ordList.map((o) => o.id);
+        const placeholders = ordIds.map(() => '?').join(',');
+        const itmsRes = await env.DB.prepare(`
+          SELECT * FROM food_order_items WHERE order_id IN (${placeholders}) ORDER BY created_at ASC
+        `).bind(...ordIds).all();
+
+        const itmsByOrderId = {};
+        for (const itm of itmsRes.results || []) {
+          if (!itmsByOrderId[itm.order_id]) itmsByOrderId[itm.order_id] = [];
+          itmsByOrderId[itm.order_id].push(itm);
+        }
+
+        ordersWithItems = ordList.map((ord) => ({
+          ...ord,
+          items: itmsByOrderId[ord.id] || [],
+        }));
       }
 
       return successResponse({
@@ -1776,19 +1792,26 @@ export async function handleVendorGetOrders(request, env, context) {
     const ordersResult = await env.DB.prepare(query).bind(...params).all();
     const orders = ordersResult.results || [];
 
-    // Fetch items for each order
-    const enrichedOrders = await Promise.all(
-      orders.map(async (ord) => {
-        const items = await env.DB.prepare(`
-          SELECT * FROM food_order_items WHERE order_id = ?
-        `).bind(ord.id).all();
+    // Batch fetch items for all vendor orders in a single database roundtrip
+    let enrichedOrders = [];
+    if (orders.length > 0) {
+      const orderIds = orders.map((o) => o.id);
+      const placeholders = orderIds.map(() => '?').join(',');
+      const itemsRes = await env.DB.prepare(`
+        SELECT * FROM food_order_items WHERE order_id IN (${placeholders}) ORDER BY created_at ASC
+      `).bind(...orderIds).all();
 
-        return {
-          ...ord,
-          items: items.results || [],
-        };
-      })
-    );
+      const itemsByOrderId = {};
+      for (const itm of itemsRes.results || []) {
+        if (!itemsByOrderId[itm.order_id]) itemsByOrderId[itm.order_id] = [];
+        itemsByOrderId[itm.order_id].push(itm);
+      }
+
+      enrichedOrders = orders.map((ord) => ({
+        ...ord,
+        items: itemsByOrderId[ord.id] || [],
+      }));
+    }
 
     return successResponse({
       vendorId,
@@ -1990,6 +2013,8 @@ export async function handleVendorCreateMenuItem(request, env, context) {
       price: numPrice,
     });
 
+    invalidateFoodProductsCache();
+
     return successResponse({
       success: true,
       item: {
@@ -2059,6 +2084,8 @@ export async function handleVendorUpdateMenuItem(request, env, context, id) {
       updates: body,
     });
 
+    invalidateFoodProductsCache();
+
     return successResponse({
       success: true,
       message: 'Product updated successfully.',
@@ -2112,6 +2139,8 @@ export async function handleVendorToggleAvailability(request, env, context, id) 
       itemId: id,
       isAvailable: Boolean(newStatus),
     });
+
+    invalidateFoodProductsCache();
 
     return successResponse({
       success: true,
@@ -2184,6 +2213,8 @@ export async function handleVendorUpdateStock(request, env, context) {
       newStock: stockNum,
       reason: reason || 'manual_adjustment',
     });
+
+    invalidateFoodProductsCache();
 
     return successResponse({
       success: true,

@@ -1,5 +1,5 @@
 import { successResponse, errorResponse } from '../../utils/response.js';
-import { ensureFoodTables } from '../food.js';
+import { ensureFoodTables, invalidateFoodProductsCache } from '../food.js';
 
 // Helper: Log Admin Food Audit Action
 export async function logAdminFoodAudit(db, admin, action, targetType, targetId, details = {}, reason = '') {
@@ -436,6 +436,7 @@ export async function handleAdminCancelFoodOrder(request, env, context, orderId)
     }
 
     await env.DB.batch(statements);
+    invalidateFoodProductsCache();
 
     await logAdminFoodAudit(
       env.DB,
@@ -850,6 +851,8 @@ export async function handleAdminAdjustFoodInventory(request, env, context) {
       SET stock = ?, is_available = ?, updated_at = ?
       WHERE id = ?
     `).bind(stockNum, availNum, now, productId).run();
+
+    invalidateFoodProductsCache();
 
     const diff = stockNum - item.stock;
     const logId = `inv_adj_${crypto.randomUUID().replace(/-/g, '')}`;
