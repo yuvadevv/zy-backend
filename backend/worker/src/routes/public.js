@@ -1,4 +1,5 @@
 import { errorResponse, successResponse } from '../utils/response.js';
+import { computeDeliveryDetails } from '../services/deliveryScheduleService.js';
 
 export async function handleGetContent(request, env) {
   try {
@@ -126,7 +127,14 @@ export async function handleGetPlatformStatus(request, env) {
     const ordersPausedMessage = settings.orders_paused_message ||
       'We are temporarily not accepting new orders right now. Please check back soon!';
 
+    const rawDeliverySchedule = settings.delivery_schedule || null;
+    const computedDelivery = computeDeliveryDetails(rawDeliverySchedule || {});
+
     const publicStatus = {
+      delivery_schedule: {
+        raw: rawDeliverySchedule,
+        computed: computedDelivery
+      },
       maintenance_mode: isMaintenance,
       maintenance_message: settings.global_banner?.text || 'Platform is under maintenance. Please check back later.',
       coming_soon: isComingSoon,

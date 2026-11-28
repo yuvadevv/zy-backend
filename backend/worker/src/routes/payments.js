@@ -2,6 +2,7 @@ import { errorResponse, successResponse } from '../utils/response.js';
 import { createPayment, getPaymentByOrderId, verifyDevelopmentPayment, markPaymentPaid } from '../services/paymentService.js';
 import { PaymentProvider } from '../services/paymentProvider.js';
 import { sendTransactionalPushToStudent } from './pushNotifications.js';
+import { getDeliveryScheduleConfig, createOrderDeliverySnapshot } from '../services/deliveryScheduleService.js';
 
 export async function handleCreatePayment(request, env, context) {
   try {
@@ -222,6 +223,12 @@ export async function handleVerifyPayment(request, env, context) {
     let deliveryRoom = payload.deliveryDetails?.roomNumber || payload.deliveryDetails?.room || null;
     const finalDiscount = orderTotal.discount || orderTotal.couponDiscount || orderTotal.offerDiscount || 0;
 
+    // Capture delivery snapshot from admin configuration or student checkout payload
+    const deliveryScheduleConfig = await getDeliveryScheduleConfig(env.DB);
+    const orderSnapshot = createOrderDeliverySnapshot(deliveryScheduleConfig, new Date(), payload.deliverySnapshot || null);
+    const orderSnapshotStr = JSON.stringify(orderSnapshot);
+    const finalEtaMs = orderSnapshot.etaMs || etaMs;
+
     stmts.push(env.DB.prepare(`
       INSERT INTO orders (
         internal_id, public_id, student_id, status, internal_status,
@@ -231,18 +238,20 @@ export async function handleVerifyPayment(request, env, context) {
         offer_code, offer_id,
         payment_attempt_id, razorpay_order_id, razorpay_payment_id, payment_status,
         payment_verified_at, vendor_payable_total, blintzy_gross_earning,
-        payment_gateway_fee, refunds_total, adjustments_total, blintzy_net_earning, revenue_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        payment_gateway_fee, refunds_total, adjustments_total, blintzy_net_earning, revenue_status,
+        delivery_snapshot
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
       internalOrderId, publicOrderId, studentId, 'received', isAnomaly ? 'anomaly' : 'processing',
       orderType, 'classroom', deliveryBuilding, deliveryRoom,
       orderTotal.platformFee, 0, orderTotal.deliveryFee, finalDiscount, orderTotal.grandTotal,
-      etaMs, nowMs, nowMs, payload.couponCode || null,
+      finalEtaMs, nowMs, nowMs, payload.couponCode || null,
       payload.offerCode || null, payload.offerId || null,
       attempt.id, providerOrderId, providerPaymentId, 'paid',
       nowMs, totalVendorPayable, totalBlintzyGross,
       // Accounting: Subtract final discount from blintzy_net_earning
-      0, 0, 0, totalBlintzyGross - finalDiscount, 'unsettled'
+      0, 0, 0, totalBlintzyGross - finalDiscount, 'unsettled',
+      orderSnapshotStr
     ));
 
     for (const item of finalItems) {

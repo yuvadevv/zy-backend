@@ -1,3 +1,5 @@
+import { getISTDateParts, computeEtaMsIST } from './deliveryScheduleService.js';
+
 export const VALID_TRANSITIONS = {
   'received': ['accepted', 'cancelled', 'rejected'],
   'accepted': ['printing', 'cancelled'],
@@ -22,6 +24,7 @@ function buildOrderDTO(o, items = [], customFiles = []) {
     status: o.status,
     paymentStatus: o.paymentStatus || 'pending',
     estimatedDelivery: o.estimated_delivery,
+    deliverySnapshot: o.delivery_snapshot ? (() => { try { return JSON.parse(o.delivery_snapshot); } catch (e) { return null; } })() : null,
     student: {
       name: o.studentName || 'Not provided',
       rollNumber: o.rollNumber || 'Not provided',
@@ -67,6 +70,7 @@ export async function getOrders(db, params) {
     status, search, page = 1, limit = 25, 
     branch, year, semester, manual_id, payment_status,
     min_price, max_price, sort = 'newest', vendor_id, order_type,
+    delivery_date,
     scopeFilter  // Array of { study_year_id, branch_id, section } — enforced for representatives
   } = params;
 
@@ -235,6 +239,37 @@ export async function getOrders(db, params) {
     }
   }
 
+  if (delivery_date && delivery_date !== 'all') {
+    const istParts = getISTDateParts(new Date());
+    if (delivery_date === 'today') {
+      const startMs = computeEtaMsIST(istParts.year, istParts.month, istParts.day, '00:00 AM');
+      const endMs = startMs + 24 * 60 * 60 * 1000 - 1;
+      query += ` AND o.estimated_delivery >= ? AND o.estimated_delivery <= ?`;
+      countQuery += ` AND o.estimated_delivery >= ? AND o.estimated_delivery <= ?`;
+      qParams.push(startMs, endMs);
+    } else if (delivery_date === 'tomorrow') {
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const tParts = getISTDateParts(tomorrow);
+      const startMs = computeEtaMsIST(tParts.year, tParts.month, tParts.day, '00:00 AM');
+      const endMs = startMs + 24 * 60 * 60 * 1000 - 1;
+      query += ` AND o.estimated_delivery >= ? AND o.estimated_delivery <= ?`;
+      countQuery += ` AND o.estimated_delivery >= ? AND o.estimated_delivery <= ?`;
+      qParams.push(startMs, endMs);
+    } else if (delivery_date === 'upcoming') {
+      const startMs = computeEtaMsIST(istParts.year, istParts.month, istParts.day, '00:00 AM');
+      query += ` AND o.estimated_delivery >= ?`;
+      countQuery += ` AND o.estimated_delivery >= ?`;
+      qParams.push(startMs);
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(delivery_date)) {
+      const [y, m, d] = delivery_date.split('-').map(Number);
+      const startMs = computeEtaMsIST(y, m, d, '00:00 AM');
+      const endMs = startMs + 24 * 60 * 60 * 1000 - 1;
+      query += ` AND o.estimated_delivery >= ? AND o.estimated_delivery <= ?`;
+      countQuery += ` AND o.estimated_delivery >= ? AND o.estimated_delivery <= ?`;
+      qParams.push(startMs, endMs);
+    }
+  }
+
   let orderBy = ` ORDER BY o.created_at DESC`;
   if (sort === 'oldest') orderBy = ` ORDER BY o.created_at ASC`;
   if (sort === 'price_asc') orderBy = ` ORDER BY o.grand_total ASC, o.created_at DESC`;
@@ -361,7 +396,7 @@ export async function updateAdminOrdersBulk(db, publicOrderIds, updates, adminId
   if (!publicOrderIds || publicOrderIds.length === 0) return { error: 'No orders selected', status: 400 };
   if (publicOrderIds.length > 500) return { error: 'Too many orders. Max 500 per batch.', status: 400 };
 
-  const { status, estimatedDelivery, deliveryType, deliveryBuilding, deliveryRoom, vendorId } = updates;
+  const { status, estimatedDelivery, deliveryType, deliveryBuilding, deliveryRoom, vendorId, deliverySnapshot } = updates;
   const now = Date.now();
   
   if (vendorId) {
@@ -418,7 +453,7 @@ export async function updateAdminOrdersBulk(db, publicOrderIds, updates, adminId
       }
     }
 
-    if (estimatedDelivery !== undefined || deliveryType !== undefined || deliveryBuilding !== undefined || deliveryRoom !== undefined || vendorId !== undefined) {
+    if (estimatedDelivery !== undefined || deliveryType !== undefined || deliveryBuilding !== undefined || deliveryRoom !== undefined || vendorId !== undefined || deliverySnapshot !== undefined) {
       shouldUpdate = true;
     }
 
@@ -431,6 +466,10 @@ export async function updateAdminOrdersBulk(db, publicOrderIds, updates, adminId
       }
       if (estimatedDelivery !== undefined) {
         updateQuery += `, estimated_delivery = ?`; updateParams.push(estimatedDelivery === null ? null : estimatedDelivery);
+      }
+      if (deliverySnapshot !== undefined) {
+        updateQuery += `, delivery_snapshot = ?`; 
+        updateParams.push(typeof deliverySnapshot === 'object' && deliverySnapshot !== null ? JSON.stringify(deliverySnapshot) : deliverySnapshot);
       }
       if (deliveryType !== undefined) {
         updateQuery += `, delivery_type = ?`; updateParams.push(deliveryType);

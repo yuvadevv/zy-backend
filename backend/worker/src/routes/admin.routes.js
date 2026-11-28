@@ -46,6 +46,7 @@ import { handleGetBranches, handlePostBranch, handlePatchBranch, handleGetSubjec
 import { handleGenericGet, handleGenericPost, handleGenericPatch, handleGenericDelete } from './admin/academic_generic.js';
 import { handleGetManuals as handleAdminGetManuals, handleAdminGetManualById, handlePostManual, handlePatchManual, handleDeleteManual } from './admin/manuals.js';
 import { handleGetSettings, handlePatchSettings, handleGetPricingSettings, handlePatchPricingSettings } from './admin/settings.js';
+import { handleGetAdminDeliverySchedule, handleUpdateAdminDeliverySchedule, handleUpdateOrderDelivery } from './deliverySchedule.js';
 import { handleAdminGetFaqs, handleAdminPostFaq, handleAdminPatchFaq, handleAdminDeleteFaq } from './admin/faqs.js';
 
 import { handleAdminGetCoupons, handleAdminPostCoupon, handleAdminPatchCoupon } from './admin/coupons.js';
@@ -150,8 +151,13 @@ adminRouter.patch('/orders/bulk', perm('orders.edit'), handleAdminBulkPatchOrder
 adminRouter.get('/orders/batches', perm('orders.view'), handleAdminGetCommonManualBatches);
 adminRouter.patch('/orders/:id/status', perm('orders.edit'), (req, env, ctx) => handleAdminPatchOrderStatus(req, env, ctx, req.params.id));
 adminRouter.patch('/orders/:id/vendor', perm('orders.assign'), (req, env, ctx) => handleAdminPatchOrderVendor(req, env, ctx, req.params.id));
+adminRouter.patch('/orders/:id/delivery', perm('orders.edit'), handleUpdateOrderDelivery);
 adminRouter.get('/orders/:id', perm('orders.view'), (req, env, ctx) => handleAdminGetOrder(req, env, ctx, req.params.id));
 adminRouter.get('/orders', perm('orders.view'), handleAdminGetOrders);
+
+// Delivery Schedule
+adminRouter.get('/delivery-schedule', perm('settings.view'), handleGetAdminDeliverySchedule);
+adminRouter.put('/delivery-schedule', perm('settings.manage'), handleUpdateAdminDeliverySchedule);
 
 // Representative-scoped order routes (representative role only)
 adminRouter.get('/representative/orders', perm('representative.orders.view'), handleAdminGetOrders);

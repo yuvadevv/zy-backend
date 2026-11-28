@@ -301,7 +301,7 @@ export async function handleGetOrders(request, env, context) {
     if (!studentId) return errorResponse('UNAUTHORIZED', 'Unauthorized', 401);
 
     const orders = await env.DB.prepare(`
-      SELECT public_id, status, grand_total, created_at, estimated_delivery, order_type
+      SELECT public_id, status, grand_total, created_at, estimated_delivery, order_type, delivery_snapshot
       FROM orders
       WHERE student_id = ? AND status != 'payment_pending'
       ORDER BY created_at DESC
